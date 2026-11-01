@@ -8,8 +8,8 @@ const BASE44_SALES = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/entit
 const API = `https://api.telegram.org/bot${TOKEN}`;
 
 const PLANS = {
-  basic: { title: "نعمك أساسي — شهري", desc: "إشارات نعمك اليومية + تنبيهات الفرص", stars: 50 },
-  pro: { title: "نعمك برو — شهري", desc: "كل مزايا الأساسي + تحليل محفظة + أولوية دعم", stars: 150 },
+  basic: { title: "نعمك أساسي — شهري", desc: "إشارات نعمك اليومية + تنبيهات الفرص", stars: 300 },
+  pro: { title: "نعمك برو — شهري", desc: "كل مزايا الأساسي + تحليل محفظة + أولوية دعم", stars: 900 },
 };
 
 async function tg(method, payload) {
@@ -24,8 +24,8 @@ async function tg(method, payload) {
 function mainKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: "باقة أساسي — 50 ⭐", callback_data: "plan_basic" }],
-      [{ text: "باقة برو — 150 ⭐", callback_data: "plan_pro" }],
+      [{ text: "باقة أساسي — 300 ⭐", callback_data: "plan_basic" }],
+      [{ text: "باقة برو — 900 ⭐", callback_data: "plan_pro" }],
       [{ text: "المساعدة", callback_data: "help" }],
     ],
   };
