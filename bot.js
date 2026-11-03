@@ -10,7 +10,7 @@ const API = `https://api.telegram.org/bot${TOKEN}`;
 const PRODUCT_FILE = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/files/mp/public/6ab5921b9ca1863c59719606/a414de526_AI-Automation-Blueprints.pdf";
 const OR_KEY = process.env.OPENROUTER_API_KEY || "";
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
-const OR_MODELS = ["nvidia/nemotron-3.5-super-vl:free", "dots-studio/dots-3-note-preview:free", "liquid/lfm-2.5-2.6b:free"];
+const OR_MODELS = ["openrouter/free", "nvidia/nemotron-3.5-lightning:free", "dots-studio/dots-3-note-preview:free"];
 const PAY_ADDR = "0xE18e7F67Ad6429577af6c394eBE94717A87B3Fae";
 const SYSTEM = `You are N3mak AI, a business assistant for small companies. Answer in the user's language (Arabic, Russian or English). Max 120 words. Concrete, no fluff.
 
@@ -36,7 +36,7 @@ async function aiReply(text) {
         body: JSON.stringify({
           model,
           messages: [{ role: "system", content: SYSTEM }, { role: "user", content: text }],
-          max_tokens: 500,
+          max_tokens: 1500,
         }),
       });
       const d = await res.json();
