@@ -8,6 +8,32 @@ const BASE44_SALES = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/entit
 const API = `https://api.telegram.org/bot${TOKEN}`;
 
 const PRODUCT_FILE = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/files/mp/public/6ab5921b9ca1863c59719606/a414de526_AI-Automation-Blueprints.pdf";
+const OR_KEY = process.env.OPENROUTER_API_KEY || "";
+const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OR_MODELS = ["nvidia/nemotron-3.5-super-vl:free", "dots-studio/dots-3-note-preview:free", "liquid/lfm-2.5-2.6b:free"];
+const SYSTEM = "You are N3mak AI, a business assistant for small companies. Answer in the user's language, max 120 words, concrete and practical, no fluff. If asked about pricing for automation work: setup 1500 USD plus 200 monthly for a customer support assistant, 3000 plus 400 for systems integration. If unsure, say so plainly.";
+
+async function aiReply(text) {
+  for (const model of OR_MODELS) {
+    try {
+      const res = await fetch(OR_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${OR_KEY}` },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "system", content: SYSTEM }, { role: "user", content: text }],
+          max_tokens: 500,
+        }),
+      });
+      const d = await res.json();
+      const out = d && d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
+      if (out && out.trim()) return out.trim();
+    } catch (e) {
+      console.error("ai error", model, e.message);
+    }
+  }
+  return "";
+}
 
 const PLANS = {
   pack: {
@@ -125,7 +151,7 @@ async function handleUpdate(u) {
   if (text === "/start") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: "*نعمك AI* 🌳\n\nالحزمة الجاهزة: 10 مخططات أتمتة للبيع، بالأسعار والـPrompts وسجل التسليم.\nوالاشتراكات الشهرية لمن يريد تنفيذا شهريا.\n\nاختر من الأسفل 👇",
+      text: "*نعمك AI* 🌳\n\nالحزمة الجاهزة: 10 مخططات أتمتة للبيع، بالأسعار والـPrompts وسجل التسليم.\nوالاشتراكات الشهرية لمن يريد تنفيذا شهريا.\n\nواكتب أي سؤال مباشرة، المساعد الذكي يرد عليك هنا مجانا.",
       parse_mode: "Markdown",
       reply_markup: mainKeyboard(),
     });
@@ -141,6 +167,16 @@ async function handleUpdate(u) {
       payload: "plan_pack",
       currency: "XTR",
       prices: [{ label: plan.title, amount: plan.stars }],
+    });
+    return;
+  }
+
+  if (text && !text.startsWith("/")) {
+    await tg("sendMessage", { chat_id: msg.chat.id, text: "لحظة…" }).catch(() => null);
+    const answer = await aiReply(text);
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: answer || "المساعد مشغول الآن، جرّب بعد دقيقة.",
     });
     return;
   }
