@@ -12,6 +12,76 @@ const OR_KEY = process.env.OPENROUTER_API_KEY || "";
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OR_MODELS = ["openrouter/free", "nvidia/nemotron-3.5-lightning:free", "dots-studio/dots-3-note-preview:free"];
 const PAY_ADDR = "0xE18e7F67Ad6429577af6c394eBE94717A87B3Fae";
+const PAY_API = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Payment";
+const RPC = "https://bsc-dataseed.binance.org";
+const USDC_BSC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
+
+async function b44(path, method, payload) {
+  const res = await fetch(path, {
+    method,
+    headers: { "content-type": "application/json", authorization: `Bearer ${BASE44_TOKEN}` },
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
+  return res.json().catch(() => null);
+}
+
+async function usdcBalance() {
+  const hexAddr = PAY_ADDR.slice(2).padStart(64, "0");
+  const res = await fetch(RPC, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0", id: 1, method: "eth_call",
+      params: [{ to: USDC_BSC, data: "0x70a08231" + hexAddr }, "latest"],
+    }),
+  });
+  const d = await res.json();
+  if (!d.result) return null;
+  return Number(BigInt(d.result)) / 1e18;
+}
+
+async function createOrder(chatId, product, baseAmount) {
+  const bal = await usdcBalance();
+  if (bal === null) return null;
+  // unique cents so we can attribute the incoming transfer
+  const cents = Math.floor(Math.random() * 89) + 10;
+  const amount = Number((baseAmount + cents / 100).toFixed(2));
+  const orderId = "NMK" + Date.now().toString(36).toUpperCase();
+  await b44(PAY_API, "POST", {
+    order_id: orderId, amount, baseline_balance: bal,
+    chat_id: String(chatId), product, status: "pending", currency: "USDC",
+  });
+  return { orderId, amount, balance: bal };
+}
+
+async function checkPendingOrders() {
+  const orders = await b44(`${PAY_API}?q=${encodeURIComponent(JSON.stringify({ status: "pending" }))}`, "GET");
+  const list = Array.isArray(orders) ? orders : orders && orders.data ? orders.data : [];
+  if (!list.length) return;
+  const bal = await usdcBalance();
+  if (bal === null) return;
+  for (const o of list) {
+    const expected = Number(o.baseline_balance || 0) + Number(o.amount || 0);
+    if (bal + 0.005 >= expected) {
+      await b44(`${PAY_API}/${o.id}`, "PUT", { status: "paid", paid_at: new Date().toISOString(), tx_ref: `balance ${bal}` });
+      await tg("sendMessage", {
+        chat_id: o.chat_id,
+        text: `تم استلام الدفع ✅
+
+الطلب: ${o.order_id}
+المبلغ: ${o.amount} USDC
+سنبدأ التنفيذ ونرسل لك خطة العمل اليوم.`,
+      });
+      await tg("sendMessage", {
+        chat_id: o.chat_id,
+        text: `دفعة وصلت: ${o.order_id} — ${o.amount} USDC (${o.product})`,
+      }).catch(() => null);
+    }
+  }
+}
+
+setInterval(() => { checkPendingOrders().catch((e) => console.error("check orders", e.message)); }, 10 * 60 * 1000);
+
 const SYSTEM = `You are N3mak AI, a business assistant for small companies. Answer in the user's language (Arabic, Russian or English). Max 120 words. Concrete, no fluff.
 
 OFFERS (quote exactly, never invent others):
@@ -195,6 +265,20 @@ async function handleUpdate(u) {
     return;
   }
 
+  if (text === "/order") {
+    const o = await createOrder(msg.chat.id, "Customer support assistant — setup", 1500);
+    if (!o) {
+      await tg("sendMessage", { chat_id: msg.chat.id, text: "تعذر إنشاء الطلب الآن، حاول بعد دقيقة." });
+      return;
+    }
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `طلبك جاهز: ${o.orderId}\n\nأرسل ${o.amount} USDC على شبكة BNB Smart Chain إلى:\n${PAY_ADDR}\n\nمهم: USDC على BSC فقط. البوت يتحقق تلقائيا ويبلغك عند وصول المبلغ.`,
+      reply_markup: { inline_keyboard: [[{ text: "عرض رمز QR", url: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${PAY_ADDR}` }]] },
+    });
+    return;
+  }
+
   if (text === "/pay") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
@@ -207,7 +291,7 @@ async function handleUpdate(u) {
   if (text === "/help") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/id رقم حسابك",
+      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/order إنشاء طلب دفع دولي\n/id رقم حسابك",
     });
     return;
   }
