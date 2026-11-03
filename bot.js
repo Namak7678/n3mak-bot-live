@@ -54,6 +54,24 @@ async function createOrder(chatId, product, baseAmount) {
   return { orderId, amount, balance: bal };
 }
 
+const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || "";
+const POSTS = [
+  "رد متأخر بساعة = طلب ضائع.\nالمساعد الذكي يرد في ثانيتين، 24 ساعة، وبلا إجازات.\nاكتب /order لبدء التجهيز.",
+  "مساعد خدمة عملاء جاهز في 3 أيام.\n1500 دولار إعداد + 200 شهري.\nنصف المبلغ قبل البدء والباقي بعد التسليم.",
+  "ربط الأنظمة ولوحة تحكم: تقرير يومي يوصلك تلقائيا بدل ساعة يدوية كل صباح.\nالتفاصيل: https://namak7678.github.io/n3mak-services/",
+  "حزمة 10 مخططات أتمتة جاهزة للبيع، كل مخطط فيها البرومبت والسعر.\n450 نجمة داخل البوت.",
+  "محتاج ننشر لك 7 منشورات أسبوعيا بدون ما تكتب حرفا؟\n900 دولار إعداد + 150 شهري.",
+];
+let postIndex = 0;
+
+async function postToChannel() {
+  if (!CHANNEL_ID) return;
+  const text = POSTS[postIndex % POSTS.length];
+  postIndex += 1;
+  await tg("sendMessage", { chat_id: CHANNEL_ID, text }).catch((e) => console.error("channel post", e.message));
+}
+setInterval(() => { postToChannel(); }, 6 * 60 * 60 * 1000);
+
 async function checkPendingOrders() {
   const orders = await b44(`${PAY_API}?q=${encodeURIComponent(JSON.stringify({ status: "pending" }))}`, "GET");
   const list = Array.isArray(orders) ? orders : orders && orders.data ? orders.data : [];
@@ -291,8 +309,18 @@ async function handleUpdate(u) {
   if (text === "/help") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/order إنشاء طلب دفع دولي\n/id رقم حسابك",
+      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/order إنشاء طلب دفع دولي\n/post نشر منشور في القناة\n/id رقم حسابك",
     });
+    return;
+  }
+
+  if (text === "/post") {
+    if (!CHANNEL_ID) {
+      await tg("sendMessage", { chat_id: msg.chat.id, text: "القناة غير مربوطة بعد. أنشئ قناة تليجرام وأضف البوت كمشرف، ثم أرسل لي رقمها." });
+      return;
+    }
+    await postToChannel();
+    await tg("sendMessage", { chat_id: msg.chat.id, text: "تم النشر في القناة." });
     return;
   }
 
