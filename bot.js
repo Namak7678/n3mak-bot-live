@@ -1,5 +1,5 @@
-// N3mak Telegram bot — Telegram Stars subscriptions (zero external payment provider)
-// Webhook mode for Render free tier. No dependencies beyond Node 20 built-ins.
+// N3mak Telegram bot — sells a digital product + subscriptions with Telegram Stars.
+// Webhook mode for Render free tier. Node 20 built-ins only.
 const http = require("http");
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -7,9 +7,27 @@ const BASE44_TOKEN = process.env.BASE44_SERVICE_TOKEN || "";
 const BASE44_SALES = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Sale";
 const API = `https://api.telegram.org/bot${TOKEN}`;
 
+const PRODUCT_FILE = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/files/mp/public/6ab5921b9ca1863c59719606/a414de526_AI-Automation-Blueprints.pdf";
+
 const PLANS = {
-  basic: { title: "نعمك أساسي — شهري", desc: "إشارات نعمك اليومية + تنبيهات الفرص", stars: 300 },
-  pro: { title: "نعمك برو — شهري", desc: "كل مزايا الأساسي + تحليل محفظة + أولوية دعم", stars: 900 },
+  pack: {
+    title: "10 AI Automation Blueprints (PDF)",
+    desc: "Ten ready-to-sell automations with the exact prompts, stack, deploy time and price to charge. Instant delivery.",
+    stars: 450,
+    kind: "file",
+  },
+  basic: {
+    title: "N3mak Basic — monthly",
+    desc: "Daily opportunities digest + automation alerts.",
+    stars: 300,
+    kind: "sub",
+  },
+  pro: {
+    title: "N3mak Pro — monthly",
+    desc: "Everything in Basic + one custom automation built for you each month.",
+    stars: 900,
+    kind: "sub",
+  },
 };
 
 async function tg(method, payload) {
@@ -24,9 +42,9 @@ async function tg(method, payload) {
 function mainKeyboard() {
   return {
     inline_keyboard: [
-      [{ text: "باقة أساسي — 300 ⭐", callback_data: "plan_basic" }],
-      [{ text: "باقة برو — 900 ⭐", callback_data: "plan_pro" }],
-      [{ text: "المساعدة", callback_data: "help" }],
+      [{ text: "📘 الحزمة — 450 ⭐", callback_data: "plan_pack" }],
+      [{ text: "باقة أساسي — 300 ⭐ شهريا", callback_data: "plan_basic" }],
+      [{ text: "باقة برو — 900 ⭐ شهريا", callback_data: "plan_pro" }],
     ],
   };
 }
@@ -50,6 +68,22 @@ async function recordSale(plan, stars, chargeId, userId, username) {
   }
 }
 
+async function deliver(chatId, planKey) {
+  const plan = PLANS[planKey];
+  if (plan && plan.kind === "file") {
+    await tg("sendDocument", { chat_id: chatId, document: PRODUCT_FILE });
+    await tg("sendMessage", {
+      chat_id: chatId,
+      text: "وصلتك الحزمة ✅\n\nابدأ بالصفحة 2: كيف تستخدمها. اختر مخططا واحدا يناسب عميلا تعرفه، وانسخ الـPrompt كما هو. أول عميل يدفع تأسيس + شهري.",
+    });
+    return;
+  }
+  await tg("sendMessage", {
+    chat_id: chatId,
+    text: `تم تفعيل اشتراكك ✅\n\nالباقة: ${plan ? plan.title : planKey}\nاكتب /start في أي وقت لعرض الباقات.`,
+  });
+}
+
 async function handleUpdate(u) {
   if (u.pre_checkout_query) {
     await tg("answerPreCheckoutQuery", { pre_checkout_query_id: u.pre_checkout_query.id, ok: true });
@@ -60,30 +94,23 @@ async function handleUpdate(u) {
 
   if (msg.successful_payment) {
     const p = msg.successful_payment;
-    const planName = (p.invoice_payload || "").replace("plan_", "") || "basic";
-    await recordSale(planName, p.total_amount, p.telegram_payment_charge_id, msg.from.id, msg.from.username);
-    await tg("sendMessage", {
-      chat_id: msg.chat.id,
-      text: `تم تفعيل اشتراكك ✅\n\nالباقة: ${PLANS[planName] ? PLANS[planName].title : planName}\nالمدفوع: ${p.total_amount} نجمة\n\nتقدر تلغي أي وقت بـ /stop`,
-    });
+    const planKey = (p.invoice_payload || "").replace("plan_", "") || "basic";
+    await recordSale(planKey, p.total_amount, p.telegram_payment_charge_id, msg.from.id, msg.from.username);
+    await deliver(msg.chat.id, planKey);
     return;
   }
 
-  if (msg.callback_query) {
-    const cb = msg.callback_query;
+  const cb = msg.callback_query || u.callback_query;
+  if (cb) {
     const data = cb.data || "";
-    if (data === "help") {
-      await tg("answerCallbackQuery", { callback_query_id: cb.id });
-      await tg("sendMessage", { chat_id: cb.message.chat.id, text: "اكتب /start لعرض الباقات. الدفع بالنجوم داخل تليجرام بدون بطاقة." });
-      return;
-    }
+    const chatId = cb.message ? cb.message.chat.id : cb.from.id;
     if (data.startsWith("plan_")) {
       const key = data.slice(5);
       const plan = PLANS[key];
       await tg("answerCallbackQuery", { callback_query_id: cb.id });
       if (!plan) return;
       await tg("sendInvoice", {
-        chat_id: cb.message.chat.id,
+        chat_id: chatId,
         title: plan.title,
         description: plan.desc,
         payload: `plan_${key}`,
@@ -94,22 +121,39 @@ async function handleUpdate(u) {
     return;
   }
 
-  if (msg.text === "/start") {
+  const text = msg.text || "";
+  if (text === "/start") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: "أهلاً بك في *نعمك AI* 🌳\n\nاختر باقتك — الدفع بنجوم تليجرام، بدون بطاقة وبدون تسجيل.",
+      text: "*نعمك AI* 🌳\n\nالحزمة الجاهزة: 10 مخططات أتمتة للبيع، بالأسعار والـPrompts وسجل التسليم.\nوالاشتراكات الشهرية لمن يريد تنفيذا شهريا.\n\nاختر من الأسفل 👇",
       parse_mode: "Markdown",
       reply_markup: mainKeyboard(),
     });
     return;
   }
 
-  if (msg.text === "/help") {
-    await tg("sendMessage", { chat_id: msg.chat.id, text: "الأوامر: /start الباقات — /stop إلغاء الاشتراك — /id رقم حسابك" });
+  if (text === "/pack" || text === "/product") {
+    const plan = PLANS.pack;
+    await tg("sendInvoice", {
+      chat_id: msg.chat.id,
+      title: plan.title,
+      description: plan.desc,
+      payload: "plan_pack",
+      currency: "XTR",
+      prices: [{ label: plan.title, amount: plan.stars }],
+    });
     return;
   }
 
-  if (msg.text === "/id") {
+  if (text === "/help") {
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/id رقم حسابك",
+    });
+    return;
+  }
+
+  if (text === "/id") {
     await tg("sendMessage", { chat_id: msg.chat.id, text: `رقم حسابك: ${msg.from.id}` });
   }
 }
@@ -126,8 +170,7 @@ const server = http.createServer((req, res) => {
     req.on("end", async () => {
       res.writeHead(200).end("ok");
       try {
-        const update = JSON.parse(body || "{}");
-        await handleUpdate(update);
+        await handleUpdate(JSON.parse(body || "{}"));
       } catch (e) {
         console.error("update failed", e.message);
       }
