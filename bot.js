@@ -11,7 +11,21 @@ const PRODUCT_FILE = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/files
 const OR_KEY = process.env.OPENROUTER_API_KEY || "";
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OR_MODELS = ["nvidia/nemotron-3.5-super-vl:free", "dots-studio/dots-3-note-preview:free", "liquid/lfm-2.5-2.6b:free"];
-const SYSTEM = "You are N3mak AI, a business assistant for small companies. Answer in the user's language, max 120 words, concrete and practical, no fluff. If asked about pricing for automation work: setup 1500 USD plus 200 monthly for a customer support assistant, 3000 plus 400 for systems integration. If unsure, say so plainly.";
+const PAY_ADDR = "0xE18e7F67Ad6429577af6c394eBE94717A87B3Fae";
+const SYSTEM = `You are N3mak AI, a business assistant for small companies. Answer in the user's language (Arabic, Russian or English). Max 120 words. Concrete, no fluff.
+
+OFFERS (quote exactly, never invent others):
+1. Customer support assistant: setup 1500 USD + 200 USD/month. Delivery 3 working days.
+2. Systems integration + dashboard: setup 3000 USD + 400 USD/month. Delivery 10 working days.
+3. Content and publishing automation: setup 900 USD + 150 USD/month. Delivery 5 working days.
+
+PAYMENT (always answer with this, never say payment is unspecified):
+USDC on BNB Smart Chain (BEP-20): ${PAY_ADDR}
+Payment terms: 50% before start, 50% on delivery. Telegram Stars are accepted only for the digital blueprint pack. If a client asks for another method, say bank transfer details are issued on the invoice and ask for their country.
+
+PROOF: we are a small AI automation team, we build with n8n and LLMs, and the digital pack in this bot is a real sample of the work.
+
+If unsure about a technical detail, say so plainly instead of guessing. Never promise results we cannot deliver.`;
 
 async function aiReply(text) {
   for (const model of OR_MODELS) {
@@ -181,10 +195,19 @@ async function handleUpdate(u) {
     return;
   }
 
+  if (text === "/pay") {
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `*الدفع* 💳\n\nUSDC على شبكة BNB Smart Chain فقط:\n\`${PAY_ADDR}\`\n\nشروط: 50% قبل البدء و50% عند التسليم.\nنجوم تليجرام للحزمة الرقمية فقط.`,
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
   if (text === "/help") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/id رقم حسابك",
+      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/id رقم حسابك",
     });
     return;
   }
