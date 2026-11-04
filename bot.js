@@ -54,7 +54,26 @@ async function createOrder(chatId, product, baseAmount) {
   return { orderId, amount, balance: bal };
 }
 
-const CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || "";
+let CHANNEL_ID = process.env.TELEGRAM_CHANNEL_ID || "";
+
+async function resolveChannel() {
+  if (CHANNEL_ID) return CHANNEL_ID;
+  const rows = await b44("https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel?limit=1&sort=-created_date", "GET");
+  const list = Array.isArray(rows) ? rows : rows && rows.data ? rows.data : [];
+  if (list.length) CHANNEL_ID = String(list[0].chat_id || "");
+  return CHANNEL_ID;
+}
+
+async function rememberChannel(chat) {
+  if (!chat || !chat.id) return;
+  CHANNEL_ID = String(chat.id);
+  const rows = await b44("https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel?limit=5", "GET");
+  const list = Array.isArray(rows) ? rows : rows && rows.data ? rows.data : [];
+  const found = list.find((r) => String(r.chat_id) === CHANNEL_ID);
+  const payload = { chat_id: CHANNEL_ID, title: chat.title || "", active: true };
+  if (found) await b44(`https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel/${found.id}`, "PUT", payload);
+  else await b44("https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel", "POST", payload);
+}
 const POSTS = [
   "رد متأخر بساعة = طلب ضائع.\nالمساعد الذكي يرد في ثانيتين، 24 ساعة، وبلا إجازات.\nاكتب /order لبدء التجهيز.",
   "مساعد خدمة عملاء جاهز في 3 أيام.\n1500 دولار إعداد + 200 شهري.\nنصف المبلغ قبل البدء والباقي بعد التسليم.",
@@ -65,6 +84,7 @@ const POSTS = [
 let postIndex = 0;
 
 async function postToChannel() {
+  await resolveChannel();
   if (!CHANNEL_ID) return;
   const text = POSTS[postIndex % POSTS.length];
   postIndex += 1;
@@ -213,6 +233,14 @@ async function deliver(chatId, planKey) {
 }
 
 async function handleUpdate(u) {
+  if (u.channel_post && u.channel_post.chat) {
+    await rememberChannel(u.channel_post.chat);
+    return;
+  }
+  if (u.my_chat_member && u.my_chat_member.chat && u.my_chat_member.chat.type !== "private") {
+    await rememberChannel(u.my_chat_member.chat);
+    return;
+  }
   if (u.pre_checkout_query) {
     await tg("answerPreCheckoutQuery", { pre_checkout_query_id: u.pre_checkout_query.id, ok: true });
     return;
@@ -315,6 +343,7 @@ async function handleUpdate(u) {
   }
 
   if (text === "/post") {
+    await resolveChannel();
     if (!CHANNEL_ID) {
       await tg("sendMessage", { chat_id: msg.chat.id, text: "القناة غير مربوطة بعد. أنشئ قناة تليجرام وأضف البوت كمشرف، ثم أرسل لي رقمها." });
       return;
