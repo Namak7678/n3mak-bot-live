@@ -122,7 +122,7 @@ setInterval(() => { postToChannels().catch((e) => console.error("post loop", e.m
 const SHOP = [
   { slug: "riyadh", ar: "ليالي الرياض", size: "50 مل", sar: 380 },
   { slug: "jeddah", ar: "بحر جدّة", size: "50 مل", sar: 360 },
-  { slug: "oud", ar: "عود الليل", size: "50 مل", sar: 420 },
+  { slug: "oud", ar: "عود الليل", size: "50 مل", sar: 620 },
   { slug: "taif", ar: "ورد الطائف", size: "50 مل", sar: 420 },
   { slug: "bakhoor", ar: "بخور الدار", size: "علبة", sar: 280 },
   { slug: "discovery", ar: "مجموعة الاكتشاف", size: "طقم", sar: 290 },
