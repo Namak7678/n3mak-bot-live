@@ -92,6 +92,17 @@ async function postToChannel() {
 }
 setInterval(() => { postToChannel(); }, 6 * 60 * 60 * 1000);
 
+const SHOP = [
+  { slug: "riyadh", ar: "ليالي الرياض", size: "50 مل", sar: 380 },
+  { slug: "jeddah", ar: "بحر جدّة", size: "50 مل", sar: 360 },
+  { slug: "oud", ar: "عود الليل", size: "50 مل", sar: 420 },
+  { slug: "taif", ar: "ورد الطائف", size: "50 مل", sar: 420 },
+  { slug: "bakhoor", ar: "بخور الدار", size: "علبة", sar: 280 },
+  { slug: "discovery", ar: "مجموعة الاكتشاف", size: "طقم", sar: 290 },
+];
+const SAR_PER_USD = 3.75;
+const usd = (sar) => Math.round((sar / SAR_PER_USD) * 100) / 100;
+
 async function checkPendingOrders() {
   const orders = await b44(`${PAY_API}?q=${encodeURIComponent(JSON.stringify({ status: "pending" }))}`, "GET");
   const list = Array.isArray(orders) ? orders : orders && orders.data ? orders.data : [];
@@ -311,7 +322,40 @@ async function handleUpdate(u) {
     return;
   }
 
-  if (text === "/order") {
+  if (text === "/shop" || text === "/store") {
+    const lines = SHOP.map((p, i) => `${i + 1}. ${p.ar} — ${p.size} — ${p.sar} ر.س (${usd(p.sar)} USDC)`).join("\n");
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `*عطور ليالي* 🌙\n\n${lines}\n\nالشحن 25 ر.س، ومجانا فوق 450 ر.س.\nللشراء: /order riyadh\nأو اكتب رقم المنتج مع كلمة order.`,
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  if (text.startsWith("/order")) {
+    const arg = text.replace("/order", "").trim();
+    let item = SHOP.find((p) => p.slug === arg);
+    if (!item && /^[1-9]$/.test(arg)) item = SHOP[Number(arg) - 1];
+    if (arg && !item) {
+      await tg("sendMessage", { chat_id: msg.chat.id, text: "المنتج غير موجود. اكتب /shop لعرض القائمة." });
+      return;
+    }
+    const product = item ? `${item.ar} ${item.size}` : "Customer support assistant — setup";
+    const base = item ? usd(item.sar + 25) : 1500;
+    const o = await createOrder(msg.chat.id, product, base);
+    if (!o) {
+      await tg("sendMessage", { chat_id: msg.chat.id, text: "تعذر إنشاء الطلب الآن، حاول بعد دقيقة." });
+      return;
+    }
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `طلبك جاهز: ${o.orderId}\nالمنتج: ${product}\n\nأرسل ${o.amount} USDC على شبكة BNB Smart Chain إلى:\n${PAY_ADDR}\n\nUSDC على BSC فقط. البوت يتحقق تلقائيا ويبلغك عند وصول المبلغ.`,
+      reply_markup: { inline_keyboard: [[{ text: "رمز QR", url: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${PAY_ADDR}` }]] },
+    });
+    return;
+  }
+
+  if (false) {
     const o = await createOrder(msg.chat.id, "Customer support assistant — setup", 1500);
     if (!o) {
       await tg("sendMessage", { chat_id: msg.chat.id, text: "تعذر إنشاء الطلب الآن، حاول بعد دقيقة." });
@@ -337,7 +381,7 @@ async function handleUpdate(u) {
   if (text === "/help") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/order إنشاء طلب دفع دولي\n/post نشر منشور في القناة\n/id رقم حسابك",
+      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/shop قائمة العطور\n/order riyadh شراء عطر\n/post نشر منشور في القناة\n/id رقم حسابك",
     });
     return;
   }
