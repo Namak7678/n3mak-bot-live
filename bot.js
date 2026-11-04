@@ -73,6 +73,13 @@ async function rememberChannel(chat) {
   const payload = { chat_id: CHANNEL_ID, title: chat.title || "", active: true };
   if (found) await b44(`https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel/${found.id}`, "PUT", payload);
   else await b44("https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel", "POST", payload);
+  const ar = /[\u0600-\u06FF]/.test(chat.title || "");
+  await tg("sendMessage", {
+    chat_id: CHANNEL_ID,
+    text: ar
+      ? "تم ربط هذه القناة ببوت نعمك ✅\nسننشر هنا: عطور ليالي، خدمات الأتمتة، والمنتجات الرقمية.\nالبوت: @N3mak_bot"
+      : "Channel connected to N3mak AI ✅\nWe will post here: automation services, the Layali perfume store and digital products.\nBot: @N3mak_bot",
+  }).catch((e) => console.error("greet fail", e.message));
 }
 const POSTS = [
   "رد متأخر بساعة = طلب ضائع.\nالمساعد الذكي يرد في ثانيتين، 24 ساعة، وبلا إجازات.\nاكتب /order لبدء التجهيز.",
@@ -81,16 +88,36 @@ const POSTS = [
   "حزمة 10 مخططات أتمتة جاهزة للبيع، كل مخطط فيها البرومبت والسعر.\n450 نجمة داخل البوت.",
   "محتاج ننشر لك 7 منشورات أسبوعيا بدون ما تكتب حرفا؟\n900 دولار إعداد + 150 شهري.",
 ];
+const EN_POSTS = [
+  "A reply that takes an hour is an order you lost.\nAn AI assistant answers in two seconds, 24/7.\nType /shop in @N3mak_bot to see the store.",
+  "Customer support assistant: 1500 USD setup, 200 monthly, live in 3 working days.\nPayment in USDC, verified on chain automatically.",
+  "We sell our perfume house Layali worldwide now. 6 fragrances, paid in USDC, shipped from Riyadh.\n/shop inside the bot.",
+  "10 automation blueprints, each with the exact prompt and the price to charge.\n450 Stars inside the bot.",
+  "Systems integration and dashboard: 3000 USD setup, 400 monthly, 10 working days.\nScope: https://namak7678.github.io/n3mak-services/",
+];
+let enIndex = 0;
 let postIndex = 0;
 
-async function postToChannel() {
-  await resolveChannel();
-  if (!CHANNEL_ID) return;
-  const text = POSTS[postIndex % POSTS.length];
-  postIndex += 1;
-  await tg("sendMessage", { chat_id: CHANNEL_ID, text }).catch((e) => console.error("channel post", e.message));
+function isArabicTitle(t) {
+  return /[\u0600-\u06FF]/.test(t || "");
 }
-setInterval(() => { postToChannel(); }, 6 * 60 * 60 * 1000);
+
+async function postToChannels() {
+  const rows = await b44("https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel?limit=20", "GET");
+  const list = Array.isArray(rows) ? rows : rows && rows.data ? rows.data : [];
+  const active = list.filter((r) => r.active !== false && r.chat_id);
+  for (const ch of active) {
+    const ar = isArabicTitle(ch.title);
+    const text = ar ? POSTS[postIndex % POSTS.length] : EN_POSTS[enIndex % EN_POSTS.length];
+    await tg("sendMessage", { chat_id: String(ch.chat_id), text }).catch((e) => console.error("post fail", ch.chat_id, e.message));
+    await b44(`https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel/${ch.id}`, "PUT", { last_post_at: new Date().toISOString() }).catch(() => null);
+  }
+  postIndex += 1;
+  enIndex += 1;
+  return active.length;
+}
+
+setInterval(() => { postToChannels().catch((e) => console.error("post loop", e.message)); }, 6 * 60 * 60 * 1000);
 
 const SHOP = [
   { slug: "riyadh", ar: "ليالي الرياض", size: "50 مل", sar: 380 },
@@ -387,13 +414,14 @@ async function handleUpdate(u) {
   }
 
   if (text === "/post") {
-    await resolveChannel();
-    if (!CHANNEL_ID) {
+    const existing = await b44("https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel?limit=20", "GET");
+    const list = Array.isArray(existing) ? existing : existing && existing.data ? existing.data : [];
+    if (!list.length) {
       await tg("sendMessage", { chat_id: msg.chat.id, text: "القناة غير مربوطة بعد. أنشئ قناة تليجرام وأضف البوت كمشرف، ثم أرسل لي رقمها." });
       return;
     }
-    await postToChannel();
-    await tg("sendMessage", { chat_id: msg.chat.id, text: "تم النشر في القناة." });
+    const n = await postToChannels();
+    await tg("sendMessage", { chat_id: msg.chat.id, text: `تم النشر في ${n} قناة.` });
     return;
   }
 
