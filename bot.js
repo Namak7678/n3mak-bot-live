@@ -430,6 +430,29 @@ async function handleUpdate(u) {
   }
 }
 
+
+// Self-healing: make sure Telegram always has our webhook (it silently disappears
+// when a deploy is slow, and then the bot stops receiving any message).
+const WEBHOOK_URL = process.env.WEBHOOK_URL || "https://n3mak-bot-n7dx.onrender.com/webhook";
+
+async function ensureWebhook() {
+  try {
+    const info = await fetch(`${API}/getWebhookInfo`).then((r) => r.json());
+    const current = info && info.result && info.result.url;
+    if (current === WEBHOOK_URL) return;
+    await tg("setWebhook", {
+      url: WEBHOOK_URL,
+      allowed_updates: ["message", "edited_message", "channel_post", "edited_channel_post", "callback_query", "pre_checkout_query", "my_chat_member", "chat_member"],
+    });
+    console.log("webhook repaired:", WEBHOOK_URL);
+  } catch (e) {
+    console.error("webhook check failed", e.message);
+  }
+}
+
+setInterval(() => { ensureWebhook(); }, 30 * 60 * 1000);
+setTimeout(() => { ensureWebhook(); }, 8000);
+
 const server = http.createServer((req, res) => {
   if (req.method === "GET") {
     res.writeHead(200, { "content-type": "text/plain" });
