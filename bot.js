@@ -127,6 +127,11 @@ const SHOP = [
   { slug: "bakhoor", ar: "بخور الدار", size: "علبة", sar: 280 },
   { slug: "discovery", ar: "مجموعة الاكتشاف", size: "طقم", sar: 290 },
 ];
+const TIERS = {
+  support: { name: "مساعد خدمة عملاء", usd: 1500, days: 3 },
+  content: { name: "أتمتة المحتوى والنشر", usd: 900, days: 5 },
+  integrate: { name: "ربط الأنظمة ولوحة تحكم", usd: 3000, days: 10 },
+};
 const SAR_PER_USD = 3.75;
 const usd = (sar) => Math.round((sar / SAR_PER_USD) * 100) / 100;
 
@@ -298,6 +303,24 @@ async function handleUpdate(u) {
   if (cb) {
     const data = cb.data || "";
     const chatId = cb.message ? cb.message.chat.id : cb.from.id;
+    if (data.startsWith("quote_")) {
+      const key = data.slice(6);
+      const tier = TIERS[key];
+      await tg("answerCallbackQuery", { callback_query_id: cb.id });
+      if (!tier) return;
+      const o = await createOrder(chatId, `${tier.name} — setup (${tier.days} days)`, tier.usd);
+      if (!o) {
+        await tg("sendMessage", { chat_id: chatId, text: "تعذر إنشاء الطلب الآن، حاول بعد دقيقة." });
+        return;
+      }
+      await tg("sendMessage", {
+        chat_id: chatId,
+        text: `عرض سعر جاهز: ${o.orderId}\n\n${tier.name}\nالإعداد: ${tier.usd} دولار + 200 دولار شهريا صيانة\nالتسليم: ${tier.days} أيام عمل\n\nأرسل ${o.amount} USDC على شبكة BNB Smart Chain إلى:\n${PAY_ADDR}\n\n50% مقدما و50% عند التسليم. البوت يتحقق آليا من وصول المبلغ.`,
+        reply_markup: { inline_keyboard: [[{ text: "رمز QR للعنوان", url: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${PAY_ADDR}` }]] },
+      });
+      return;
+    }
+
     if (data.startsWith("plan_")) {
       const key = data.slice(5);
       const plan = PLANS[key];
@@ -345,6 +368,21 @@ async function handleUpdate(u) {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
       text: answer || "المساعد مشغول الآن، جرّب بعد دقيقة.",
+    });
+    return;
+  }
+
+  if (text === "/quote") {
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: "اختر الخدمة المطلوبة وسننشئ لك طلب دفع بالسعر المحدد، بدون مفاوضات:\n\n١. مساعد خدمة عملاء — 1500 دولار إعداد، تسليم 3 أيام\n٢. أتمتة المحتوى — 900 دولار، تسليم 5 أيام\n٣. ربط الأنظمة ولوحة تحكم — 3000 دولار، تسليم 10 أيام",
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "مساعد خدمة عملاء — 1500$", callback_data: "quote_support" }],
+          [{ text: "أتمتة المحتوى — 900$", callback_data: "quote_content" }],
+          [{ text: "ربط الأنظمة — 3000$", callback_data: "quote_integrate" }],
+        ],
+      },
     });
     return;
   }
@@ -408,7 +446,7 @@ async function handleUpdate(u) {
   if (text === "/help") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/shop قائمة العطور\n/order riyadh شراء عطر\n/post نشر منشور في القناة\n/id رقم حسابك",
+      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/shop قائمة العطور\n/order riyadh شراء عطر\n/quote عرض سعر فوري\n/post نشر منشور في القناة\n/id رقم حسابك",
     });
     return;
   }
