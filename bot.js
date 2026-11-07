@@ -10,7 +10,7 @@ const API = `https://api.telegram.org/bot${TOKEN}`;
 const PRODUCT_FILE = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/files/mp/public/6ab5921b9ca1863c59719606/a414de526_AI-Automation-Blueprints.pdf";
 const OR_KEY = process.env.OPENROUTER_API_KEY || "";
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
-const OR_MODELS = ["openrouter/free", "nvidia/nemotron-3.5-lightning:free", "dots-studio/dots-3-note-preview:free"];
+const OR_MODELS = ["liquid/lfm-2.5-2.6b:free", "openrouter/free", "nvidia/nemotron-3.5-lightning:free"];
 const PAY_ADDR = "0xE18e7F67Ad6429577af6c394eBE94717A87B3Fae";
 const PAY_API = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Payment";
 const RPC = "https://bsc-dataseed.binance.org";
@@ -187,7 +187,7 @@ async function aiReply(text) {
         body: JSON.stringify({
           model,
           messages: [{ role: "system", content: SYSTEM }, { role: "user", content: text }],
-          max_tokens: 1500,
+          max_tokens: 900,
         }),
       });
       const d = await res.json();
@@ -372,7 +372,7 @@ async function handleUpdate(u) {
   }
 
   if (text && !text.startsWith("/")) {
-    await tg("sendMessage", { chat_id: msg.chat.id, text: "لحظة…" }).catch(() => null);
+    await tg("sendMessage", { chat_id: msg.chat.id, text: "…" }).catch(() => null);
     const answer = await aiReply(text);
     await tg("sendMessage", {
       chat_id: msg.chat.id,
