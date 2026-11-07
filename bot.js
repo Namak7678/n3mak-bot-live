@@ -338,6 +338,15 @@ async function handleUpdate(u) {
     return;
   }
 
+  if (msg.forward_from_chat && msg.forward_from_chat.type === "channel") {
+    await rememberChannel(msg.forward_from_chat);
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `تم ربط القناة: ${msg.forward_from_chat.title || msg.forward_from_chat.id} ✅`,
+    }).catch(() => null);
+    return;
+  }
+
   const text = msg.text || "";
   if (text === "/start") {
     await tg("sendMessage", {
