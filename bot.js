@@ -135,6 +135,73 @@ const TIERS = {
 const SAR_PER_USD = 3.75;
 const usd = (sar) => Math.round((sar / SAR_PER_USD) * 100) / 100;
 
+
+// ---- Dark Web Diver + Blue Hole, inside the bot (no backend function needed) ----
+async function leakFeed() {
+  const urls = ["https://api.ransomware.live/v2/recentvictims", "https://api.ransomware.live/recentvictims"];
+  const seen = new Set();
+  const items = [];
+  for (const u of urls) {
+    try {
+      const res = await fetch(u, { headers: { "user-agent": "N3makDiver/1.0" }, redirect: "follow", signal: AbortSignal.timeout(20000) });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : data.data || [];
+      for (const x of list) {
+        const key = String(x.victim || x.post_title || "").toLowerCase();
+        if (key && !seen.has(key)) { seen.add(key); items.push(x); }
+      }
+      if (items.length) break;
+    } catch (e) { /* try next feed */ }
+  }
+  return items;
+}
+
+const norm = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+async function darkDive(target) {
+  const feed = await leakFeed();
+  if (!feed.length) return null;
+  const t = norm(target);
+  const hits = feed.filter((x) => {
+    const v = norm(x.victim || x.post_title);
+    return t.length > 3 && v && (v.includes(t) || t.includes(v));
+  });
+  return { feedSize: feed.length, hits: hits.slice(0, 5) };
+}
+
+const STACK_RX = {
+  shopify: /cdn\.shopify|shopify\.com/, wordpress: /wp-content|wp-includes/, salla: /salla\./,
+  zid: /zid\.store/, webflow: /webflow/, nextjs: /__NEXT_DATA__|_next\/static/,
+  cloudflare: /cloudflare/, hubspot: /hs-scripts|hubspot/, ga4: /gtag\/js\?id=g-|googletagmanager/,
+  meta: /connect\.facebook\.net|fbq\(/, intercom: /intercom/, whatsapp: /wa\.me|api\.whatsapp/,
+  calendly: /calendly/, stripe: /js\.stripe/, moyasar: /moyasar/, tap: /tap\.pay/,
+};
+const GAP_RX = [
+  ["لا قناة رد فوري", /intercom|tawk|crisp|livechat|tidio|wa\.me|whatsapp|zendesk/, 1500],
+  ["لا أسئلة شائعة", /faq|frequently asked|help center|الأسئلة الشائعة/, 700],
+  ["لا حجز ذاتي", /book now|booking|appointment|calendly|cal\.com|احجز/, 900],
+  ["لا نموذج تواصل", /<form|contact us|get in touch|اتصل بنا|تواصل معنا/, 600],
+  ["لا أسعار ظاهرة", /price|pricing|ر\.س|sar|aed|₽/, 700],
+  ["لا تتبع تحويلات", /gtag\/js|googletagmanager|fbq\(|metrika/, 500],
+];
+
+async function blueHole(url) {
+  let u = url.trim();
+  if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+  try {
+    const res = await fetch(u, { headers: { "user-agent": "Mozilla/5.0 (compatible; N3makBlueHole/1.0)" }, signal: AbortSignal.timeout(18000) });
+    if (!res.ok) return { error: `الموقع أرجع ${res.status}` };
+    const html = (await res.text()).slice(0, 400000).toLowerCase();
+    const stack = Object.entries(STACK_RX).filter(([, rx]) => rx.test(html)).map(([k]) => k);
+    const gaps = GAP_RX.filter(([, rx]) => !rx.test(html)).map(([label, , usd]) => ({ label, usd }));
+    const value = gaps.reduce((a, g) => a + g.usd, 0);
+    return { url: u, stack, gaps, value, score: Math.max(0, 100 - gaps.length * 14) };
+  } catch (e) {
+    return { error: "تعذر الوصول للموقع" };
+  }
+}
+
 async function checkPendingOrders() {
   const orders = await b44(`${PAY_API}?q=${encodeURIComponent(JSON.stringify({ status: "pending" }))}`, "GET");
   const list = Array.isArray(orders) ? orders : orders && orders.data ? orders.data : [];
@@ -385,6 +452,35 @@ async function handleUpdate(u) {
     return;
   }
 
+  if (text.startsWith("/dive")) {
+    const target = text.replace("/dive", "").trim();
+    if (!target) { await tg("sendMessage", { chat_id: msg.chat.id, text: "اكتب: /dive اسم-الشركة أو النطاق" }); return; }
+    await tg("sendMessage", { chat_id: msg.chat.id, text: "أفحص قوائم التسريب الآن…" });
+    const r = await darkDive(target);
+    if (!r) { await tg("sendMessage", { chat_id: msg.chat.id, text: "قاعدة التسريب غير متاحة الآن، حاول بعد دقائق." }); return; }
+    if (!r.hits.length) {
+      await tg("sendMessage", { chat_id: msg.chat.id, text: `دايفر الدارك ويب\n\nالهدف: ${target}\nالنتيجة: لا مطابقة في ${r.feedSize} حالة تسريب منشورة.\n\nهذا لا يعني السلامة، بل أنه لم يُنشر شيء حتى الآن. التقرير الكامل 99 دولارا ويشمل المصادر والتوصيات: /quote` });
+      return;
+    }
+    const lines = r.hits.map((h, i) => `${i + 1}. ${String(h.victim || h.post_title).slice(0, 60)} — ${h.group_name || h.group || "?"} — ${h.country || ""}`).join("\n");
+    await tg("sendMessage", { chat_id: msg.chat.id, text: `تحذير: الهدف ${target} ظهر في قوائم التسريب\n\n${lines}\n\nالتقرير الكامل مع خطوات الاحتواء: /quote` });
+    return;
+  }
+
+  if (text.startsWith("/blue") || text.startsWith("/audit")) {
+    const u = text.replace("/blue", "").replace("/audit", "").trim();
+    if (!u) { await tg("sendMessage", { chat_id: msg.chat.id, text: "اكتب: /blue موقعك.com" }); return; }
+    await tg("sendMessage", { chat_id: msg.chat.id, text: "أحلل الموقع الآن…" });
+    const r = await blueHole(u);
+    if (r.error) { await tg("sendMessage", { chat_id: msg.chat.id, text: r.error }); return; }
+    const gaps = r.gaps.length ? r.gaps.map((g, i) => `${i + 1}. ${g.label} — إصلاح ${g.usd || 0} دولار`).join("\n") : "لا ثغرات واضحة";
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `بلو هول\n\n${r.url}\nالتقنيات: ${r.stack.join(", ") || "غير معروفة"}\nدرجة الجاهزية: ${r.score}\n\nالثغرات:\n${gaps}\n\nقيمة الإصلاحات: ${r.value} دولار. للتقرير الكامل والتنفيذ: /quote`,
+    });
+    return;
+  }
+
   if (text === "/quote") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
@@ -459,7 +555,7 @@ async function handleUpdate(u) {
   if (text === "/help") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/shop قائمة العطور\n/order riyadh شراء عطر\n/quote عرض سعر فوري\n/bind ربط المجموعة الحالية\n/post نشر منشور في القناة\n/id رقم حسابك",
+      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/shop قائمة العطور\n/order riyadh شراء عطر\n/quote عرض سعر فوري\n/dive فحص تسريب اسم\n/blue تحليل موقع\n/bind ربط المجموعة\n/post نشر منشور في القناة\n/id رقم حسابك",
     });
     return;
   }
