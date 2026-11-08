@@ -348,6 +348,10 @@ async function handleUpdate(u) {
   }
 
   const text = msg.text || "";
+  if ((text === "/start" || text === "/start@N3mak_bot") && msg.chat && (msg.chat.type === "group" || msg.chat.type === "supergroup")) {
+    await rememberChannel(msg.chat);
+  }
+
   if (text === "/start") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
@@ -455,8 +459,22 @@ async function handleUpdate(u) {
   if (text === "/help") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/shop قائمة العطور\n/order riyadh شراء عطر\n/quote عرض سعر فوري\n/post نشر منشور في القناة\n/id رقم حسابك",
+      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/shop قائمة العطور\n/order riyadh شراء عطر\n/quote عرض سعر فوري\n/bind ربط المجموعة الحالية\n/post نشر منشور في القناة\n/id رقم حسابك",
     });
+    return;
+  }
+
+  if (text === "/bind" || text === "/bind@N3mak_bot") {
+    const chat = msg.chat || {};
+    if (chat.type === "private") {
+      await tg("sendMessage", { chat_id: msg.chat.id, text: "اكتب /bind داخل المجموعة أو القناة نفسها، لا في الخاص." });
+      return;
+    }
+    await rememberChannel(chat);
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `تم ربط هذه المجموعة: ${chat.title || chat.id} ✅\nسننشر هنا تلقائيا كل 6 ساعات.`,
+    }).catch(() => null);
     return;
   }
 
