@@ -267,6 +267,8 @@ async function aiReply(text) {
   return "";
 }
 
+const LAST = new Map();
+
 const PLANS = {
   pack: {
     title: "10 AI Automation Blueprints (PDF)",
@@ -280,6 +282,24 @@ const PLANS = {
     stars: 300,
     kind: "sub",
   },
+  dive_report: {
+    title: "Dark Web Diver — full report",
+    desc: "Full exposure report: every published leak match, the group, the date, the country, containment steps and sources.",
+    stars: 2300,
+    kind: "report",
+  },
+  blue_report: {
+    title: "Blue Hole — full dossier",
+    desc: "Full website dossier: detected stack, every gap with its fix and price, 30-day repair plan and readiness score.",
+    stars: 3800,
+    kind: "report",
+  },
+  bundle_report: {
+    title: "Diver + Blue Hole bundle",
+    desc: "Both reports for one company in a single delivery.",
+    stars: 4900,
+    kind: "report",
+  },
   pro: {
     title: "N3mak Pro — monthly",
     desc: "Everything in Basic + one custom automation built for you each month.",
@@ -287,6 +307,33 @@ const PLANS = {
     kind: "sub",
   },
 };
+
+async function deliverReport(chatId, planKey) {
+  const mem = LAST.get(chatId) || {};
+  const parts = [];
+  if (planKey !== "blue_report") {
+    const target = mem.dive || "";
+    const r = target ? await darkDive(target) : null;
+    if (r) {
+      const hits = r.hits.length
+        ? r.hits.map((h, i) => `${i + 1}. ${h.victim || h.post_title} | ${h.group_name || h.group || "?"} | ${h.country || ""} | ${h.discovered || h.published || ""}`).join("\n")
+        : "لا مطابقة منشورة.";
+      parts.push(`*دايفر الدارك ويب — ${target}*\nعدد الحالات المفحوصة: ${r.feedSize}\nالمطابقات:\n${hits}\n\nخطوات الاحتواء:\n1. تغيير كلمات المرور وفرض التحقق الثنائي.\n2. مراجعة الحسابات ذات الصلاحية العالية.\n3. فحص نقاط الوصول الخارجية والـVPN.\n4. نسخة احتياطية غير متصلة.\n\nالمصدر: قوائم ضحايا الفدية المنشورة علنا. عدم الظهور لا يعني السلامة.`);
+    } else {
+      parts.push("تعذر جلب بيانات التسريب الآن، وسنعيد الفحص ونرسل التقرير.");
+    }
+  }
+  if (planKey !== "dive_report") {
+    const b = mem.blue;
+    if (b && !b.error) {
+      const gaps = b.gaps.map((g, i) => `${i + 1}. ${g.label} — ${g.usd ? g.usd + " دولار" : "على التسعير"}`).join("\n");
+      parts.push(`*بلو هول — ${b.url}*\nالتقنيات: ${b.stack.join(", ") || "غير معروفة"}\nدرجة الجاهزية: ${b.score}/100\n\nالثغرات:\n${gaps}\n\nخطة 30 يوما:\nالأسبوع 1: أعلى ثغرة أثرا.\nالأسبوع 2: قناة الرد الفوري.\nالأسبوع 3: الأتمتة والقياس.\nالأسبوع 4: مراجعة الأرقام.`);
+    } else {
+      parts.push("لم أجد تحليلا محفوظا لهذه المحادثة. اكتب /blue موقعك أولا ثم اطلب الملف.");
+    }
+  }
+  await tg("sendMessage", { chat_id: chatId, text: parts.join("\n\n———\n\n"), parse_mode: "Markdown" });
+}
 
 async function tg(method, payload) {
   const res = await fetch(`${API}/${method}`, {
@@ -362,6 +409,10 @@ async function handleUpdate(u) {
     const p = msg.successful_payment;
     const planKey = (p.invoice_payload || "").replace("plan_", "") || "basic";
     await recordSale(planKey, p.total_amount, p.telegram_payment_charge_id, msg.from.id, msg.from.username);
+    if (planKey === "dive_report" || planKey === "blue_report" || planKey === "bundle_report") {
+      await deliverReport(msg.chat.id, planKey);
+      return;
+    }
     await deliver(msg.chat.id, planKey);
     return;
   }
@@ -459,11 +510,24 @@ async function handleUpdate(u) {
     const r = await darkDive(target);
     if (!r) { await tg("sendMessage", { chat_id: msg.chat.id, text: "قاعدة التسريب غير متاحة الآن، حاول بعد دقائق." }); return; }
     if (!r.hits.length) {
-      await tg("sendMessage", { chat_id: msg.chat.id, text: `دايفر الدارك ويب\n\nالهدف: ${target}\nالنتيجة: لا مطابقة في ${r.feedSize} حالة تسريب منشورة.\n\nهذا لا يعني السلامة، بل أنه لم يُنشر شيء حتى الآن. التقرير الكامل 99 دولارا ويشمل المصادر والتوصيات: /quote` });
+      LAST.set(msg.chat.id, { ...(LAST.get(msg.chat.id) || {}), dive: target });
+      await tg("sendMessage", {
+        chat_id: msg.chat.id,
+        text: `دايفر الدارك ويب\n\nالهدف: ${target}\nالنتيجة: لا مطابقة في ${r.feedSize} حالة تسريب منشورة.\n\nهذا لا يعني السلامة، بل أنه لم يُنشر شيء حتى الآن.`,
+        reply_markup: { inline_keyboard: [
+          [{ text: "التقرير الكامل — 2300 ⭐", callback_data: "plan_dive_report" }],
+          [{ text: "الباقة مع بلو هول — 4900 ⭐", callback_data: "plan_bundle_report" }],
+        ] },
+      });
       return;
     }
     const lines = r.hits.map((h, i) => `${i + 1}. ${String(h.victim || h.post_title).slice(0, 60)} — ${h.group_name || h.group || "?"} — ${h.country || ""}`).join("\n");
-    await tg("sendMessage", { chat_id: msg.chat.id, text: `تحذير: الهدف ${target} ظهر في قوائم التسريب\n\n${lines}\n\nالتقرير الكامل مع خطوات الاحتواء: /quote` });
+    LAST.set(msg.chat.id, { ...(LAST.get(msg.chat.id) || {}), dive: target });
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `تحذير: الهدف ${target} ظهر في قوائم التسريب\n\n${lines}\n\nالتقرير الكامل يشمل خطوات الاحتواء والمصادر.`,
+      reply_markup: { inline_keyboard: [[{ text: "التقرير الكامل — 2300 ⭐", callback_data: "plan_dive_report" }]] },
+    });
     return;
   }
 
@@ -476,8 +540,13 @@ async function handleUpdate(u) {
     const gaps = r.gaps.length ? r.gaps.map((g, i) => `${i + 1}. ${g.label} — إصلاح ${g.usd || 0} دولار`).join("\n") : "لا ثغرات واضحة";
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: `بلو هول\n\n${r.url}\nالتقنيات: ${r.stack.join(", ") || "غير معروفة"}\nدرجة الجاهزية: ${r.score}\n\nالثغرات:\n${gaps}\n\nقيمة الإصلاحات: ${r.value} دولار. للتقرير الكامل والتنفيذ: /quote`,
+      text: `بلو هول\n\n${r.url}\nالتقنيات: ${r.stack.join(", ") || "غير معروفة"}\nدرجة الجاهزية: ${r.score}\n\nالثغرات:\n${gaps}\n\nقيمة الإصلاحات: ${r.value} دولار.`,
+      reply_markup: { inline_keyboard: [
+        [{ text: "الملف الكامل — 3800 ⭐", callback_data: "plan_blue_report" }],
+        [{ text: "تنفيذ الإصلاحات — عرض سعر", callback_data: "quote_support" }],
+      ] },
     });
+    LAST.set(msg.chat.id, { ...(LAST.get(msg.chat.id) || {}), blue: r });
     return;
   }
 
