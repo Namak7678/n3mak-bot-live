@@ -389,6 +389,12 @@ async function deliver(chatId, planKey) {
   });
 }
 
+
+// With privacy mode disabled the bot sees every group message. Answer only when it is
+// addressed to us (command or @mention), otherwise stay silent so it never floods a group.
+const BOT_USERNAME = (process.env.BOT_USERNAME || "N3mak_bot").toLowerCase();
+const isGroupChat = (chat) => chat && (chat.type === "group" || chat.type === "supergroup" || chat.type === "channel");
+
 async function handleUpdate(u) {
   if (u.channel_post && u.channel_post.chat) {
     await rememberChannel(u.channel_post.chat);
@@ -466,6 +472,13 @@ async function handleUpdate(u) {
   }
 
   const text = msg.text || "";
+
+  if (isGroupChat(msg.chat) && !text.startsWith("/") && !text.toLowerCase().includes("@" + BOT_USERNAME)) {
+    return;
+  }
+  if (isGroupChat(msg.chat) && text.startsWith("/")) {
+    await rememberChannel(msg.chat).catch(() => null);
+  }
   if ((text === "/start" || text === "/start@N3mak_bot") && msg.chat && (msg.chat.type === "group" || msg.chat.type === "supergroup")) {
     await rememberChannel(msg.chat);
   }
