@@ -3,7 +3,16 @@
 const http = require("http");
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const BASE44_TOKEN = process.env.BASE44_SERVICE_TOKEN || "";
+const BASE44_TOKEN = process.env.BASE44_SERVICE_TOKEN || process.env.BASE44_TOKEN || process.env.BASE44_KEY || "";
+const fs = require("fs");
+const STORE_PATH = process.env.STORE_PATH || "./n3mak_store.json";
+function loadStore() {
+  try { return JSON.parse(fs.readFileSync(STORE_PATH, "utf8")); } catch { return { channels: [], orders: [] }; }
+}
+function saveStore(st) {
+  try { fs.writeFileSync(STORE_PATH, JSON.stringify(st, null, 1)); } catch (e) { console.error("store save failed", e.message); }
+}
+let STORE = loadStore();
 const BASE44_SALES = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Sale";
 const API = `https://api.telegram.org/bot${TOKEN}`;
 
@@ -67,12 +76,19 @@ async function resolveChannel() {
 async function rememberChannel(chat) {
   if (!chat || !chat.id) return;
   CHANNEL_ID = String(chat.id);
+  STORE.channels = Array.isArray(STORE.channels) ? STORE.channels : [];
+  if (!STORE.channels.some((c) => String(c.chat_id) === CHANNEL_ID)) {
+    STORE.channels.push({ chat_id: CHANNEL_ID, title: chat.title || "", active: true, added: new Date().toISOString() });
+    saveStore(STORE);
+  }
   const rows = await b44("https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel?limit=5", "GET");
   const list = Array.isArray(rows) ? rows : rows && rows.data ? rows.data : [];
   const found = list.find((r) => String(r.chat_id) === CHANNEL_ID);
   const payload = { chat_id: CHANNEL_ID, title: chat.title || "", active: true };
-  if (found) await b44(`https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel/${found.id}`, "PUT", payload);
-  else await b44("https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel", "POST", payload);
+  const wr = found
+    ? await b44(`https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel/${found.id}`, "PUT", payload)
+    : await b44("https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel", "POST", payload);
+  if (!wr || (!wr.id && !wr.updated_date)) console.error("channel write rejected", JSON.stringify(wr).slice(0, 160));
   const ar = /[\u0600-\u06FF]/.test(chat.title || "");
   await tg("sendMessage", {
     chat_id: CHANNEL_ID,
@@ -702,6 +718,17 @@ const server = http.createServer((req, res) => {
     res.end("n3mak bot ok");
     return;
   }
+  if (req.method === "GET" && req.url.startsWith("/status")) {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({
+      channels: STORE.channels || [],
+      orders: (STORE.orders || []).slice(-10),
+      base44_token_present: Boolean(BASE44_TOKEN),
+      uptime_s: Math.round(process.uptime()),
+    }));
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/webhook") {
     let body = "";
     req.on("data", (c) => (body += c));
