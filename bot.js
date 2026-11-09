@@ -713,11 +713,12 @@ setInterval(() => { ensureWebhook(); }, 30 * 60 * 1000);
 setTimeout(() => { ensureWebhook(); }, 8000);
 
 const server = http.createServer((req, res) => {
-  if (req.method === "GET") {
+  if (req.method === "GET" && !req.url.startsWith("/status")) {
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("n3mak bot ok");
     return;
   }
+
   if (req.method === "GET" && req.url.startsWith("/status")) {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
