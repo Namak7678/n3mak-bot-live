@@ -511,6 +511,11 @@ async function handleUpdate(u) {
     await rememberChannel(msg.chat);
   }
 
+  if (text.startsWith("/start")) {
+    const payload = (text.split(" ")[1] || "").trim();
+    await store.recordVisit(payload || "direct", msg.chat.id).catch(() => null);
+  }
+
   if (text === "/start") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
@@ -760,6 +765,7 @@ const server = http.createServer(async (req, res) => {
       autonomy: "broadcast every 6h from Neon queue",
       self_pings: SELF_PINGS,
       outlets: OUTLETS.length,
+      visits: await store.visitStats(),
       keepalive: "self ping every 9 min",
       channels_db: await store.listChannels(),
       orders_db: await store.recentOrders(),

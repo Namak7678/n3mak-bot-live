@@ -99,6 +99,33 @@ async function seedPosts(list) {
   } catch (e) { return 0; }
 }
 
+async function recordVisit(source, chatId) {
+  if (!ready) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS visits (
+        id SERIAL PRIMARY KEY,
+        source TEXT,
+        chat_id TEXT,
+        created TIMESTAMPTZ DEFAULT NOW()
+      )`);
+    await pool.query("INSERT INTO visits (source, chat_id) VALUES ($1,$2)", [source || "direct", String(chatId)]);
+    return true;
+  } catch (e) { console.error("recordVisit:", e.message); return false; }
+}
+
+async function visitStats() {
+  if (!ready) return [];
+  try {
+    const r = await pool.query(`
+      CREATE TABLE IF NOT EXISTS visits (
+        id SERIAL PRIMARY KEY, source TEXT, chat_id TEXT, created TIMESTAMPTZ DEFAULT NOW());
+      SELECT source, COUNT(*)::int AS n FROM visits GROUP BY source ORDER BY n DESC LIMIT 10`);
+    const last = r[r.length - 1];
+    return (last && last.rows) ? r.rows : [];
+  } catch (e) { return []; }
+}
+
 async function cleanTestChannels() {
   if (!ready) return 0;
   try {
@@ -109,4 +136,4 @@ async function cleanTestChannels() {
 
 function isReady() { return ready; }
 
-module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, isReady };
+module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, isReady };
