@@ -6,6 +6,7 @@ const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const BASE44_TOKEN = process.env.BASE44_SERVICE_TOKEN || process.env.BASE44_TOKEN || process.env.BASE44_KEY || "";
 const fs = require("fs");
 const store = require("./store");
+const OUTLETS = require("./outlets.json");
 store.init();
 const POST_EVERY_MS = 6 * 60 * 60 * 1000;
 const SEED_POSTS = [
@@ -590,6 +591,19 @@ async function handleUpdate(u) {
     return;
   }
 
+  if (text.startsWith("/outlets")) {
+    const cat = text.replace("/outlets", "").trim().toLowerCase();
+    const list = cat ? OUTLETS.filter((o) => o.cat === cat) : OUTLETS;
+    if (!list.length) {
+      const cats = [...new Set(OUTLETS.map((o) => o.cat))].join(", ");
+      await tg("sendMessage", { chat_id: msg.chat.id, text: `الأقسام المتاحة: ${cats}\nمثال: /outlets launch` });
+      return;
+    }
+    const body = list.map((o, i) => `${i + 1}. ${o.name}\n${o.url}`).join("\n\n");
+    await tg("sendMessage", { chat_id: msg.chat.id, text: `منافذ النشر والتسويق (${list.length}):\n\n${body}` });
+    return;
+  }
+
   if (text === "/quote") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
@@ -664,7 +678,7 @@ async function handleUpdate(u) {
   if (text === "/help") {
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/shop قائمة العطور\n/order riyadh شراء عطر\n/quote عرض سعر فوري\n/dive فحص تسريب اسم\n/blue تحليل موقع\n/bind ربط المجموعة\n/post نشر منشور في القناة\n/id رقم حسابك",
+      text: "/start الباقات و الحزمة\n/pack شراء الحزمة مباشرة\n/pay بيانات الدفع\n/shop قائمة العطور\n/order riyadh شراء عطر\n/quote عرض سعر فوري\n/dive فحص تسريب اسم\n/blue تحليل موقع\n/outlets منافذ النشر\n/bind ربط المجموعة\n/post نشر منشور في القناة\n/id رقم حسابك",
     });
     return;
   }
@@ -745,6 +759,7 @@ const server = http.createServer(async (req, res) => {
       durable: store.isReady(),
       autonomy: "broadcast every 6h from Neon queue",
       self_pings: SELF_PINGS,
+      outlets: OUTLETS.length,
       keepalive: "self ping every 9 min",
       channels_db: await store.listChannels(),
       orders_db: await store.recentOrders(),

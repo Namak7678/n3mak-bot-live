@@ -1,0 +1,140 @@
+[
+ {
+  "cat": "botdir",
+  "name": "Telegram BotList",
+  "url": "https://t.me/BotList",
+  "code": 200
+ },
+ {
+  "cat": "launch",
+  "name": "Product Hunt",
+  "url": "https://www.producthunt.com/posts/new",
+  "code": 403
+ },
+ {
+  "cat": "launch",
+  "name": "BetaList",
+  "url": "https://betalist.com/submit",
+  "code": 200
+ },
+ {
+  "cat": "launch",
+  "name": "Uneed",
+  "url": "https://www.uneed.best/submit-a-tool",
+  "code": 200
+ },
+ {
+  "cat": "launch",
+  "name": "MicroLaunch",
+  "url": "https://microlaunch.net/submit",
+  "code": 200
+ },
+ {
+  "cat": "launch",
+  "name": "Hacker News Show HN",
+  "url": "https://news.ycombinator.com/submit",
+  "code": 200
+ },
+ {
+  "cat": "launch",
+  "name": "Indie Hackers",
+  "url": "https://www.indiehackers.com/products",
+  "code": 200
+ },
+ {
+  "cat": "launch",
+  "name": "AlternativeTo",
+  "url": "https://alternativeto.net/manage/add-software/",
+  "code": 403
+ },
+ {
+  "cat": "launch",
+  "name": "SaaSHub",
+  "url": "https://www.saashub.com/submit",
+  "code": 200
+ },
+ {
+  "cat": "freelance",
+  "name": "Upwork",
+  "url": "https://www.upwork.com/nx/signup/",
+  "code": 403
+ },
+ {
+  "cat": "freelance",
+  "name": "Fiverr",
+  "url": "https://www.fiverr.com/start_selling",
+  "code": 200
+ },
+ {
+  "cat": "freelance",
+  "name": "Freelancer",
+  "url": "https://www.freelancer.com/signup",
+  "code": 200
+ },
+ {
+  "cat": "freelance",
+  "name": "PeoplePerHour",
+  "url": "https://www.peopleperhour.com/site/register",
+  "code": 200
+ },
+ {
+  "cat": "freelance",
+  "name": "Malt",
+  "url": "https://www.malt.com/",
+  "code": 403
+ },
+ {
+  "cat": "freelance",
+  "name": "Freelancermap",
+  "url": "https://www.freelancermap.com/",
+  "code": 200
+ },
+ {
+  "cat": "classifieds",
+  "name": "Dubizzle",
+  "url": "https://www.dubizzle.com/",
+  "code": 200
+ },
+ {
+  "cat": "classifieds",
+  "name": "Marktplaats NL",
+  "url": "https://www.marktplaats.nl/",
+  "code": 200
+ },
+ {
+  "cat": "classifieds",
+  "name": "Avito RU",
+  "url": "https://www.avito.ru/",
+  "code": 403
+ },
+ {
+  "cat": "classifieds",
+  "name": "OLX",
+  "url": "https://www.olx.com/",
+  "code": 200
+ },
+ {
+  "cat": "b2b",
+  "name": "Clutch",
+  "url": "https://clutch.co/get-listed",
+  "code": 403
+ },
+ {
+  "cat": "b2b",
+  "name": "GoodFirms",
+  "url": "https://www.goodfirms.co/company/add-listing",
+  "code": 200
+ },
+ {
+  "cat": "b2b",
+  "name": "Sortlist",
+  "url": "https://www.sortlist.com/",
+  "code": 200
+ },
+ {
+  "cat": "b2b",
+  "name": "Crunchbase",
+  "url": "https://www.crunchbase.com/",
+  "code": 200
+ }
+]
