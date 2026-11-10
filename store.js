@@ -99,6 +99,14 @@ async function seedPosts(list) {
   } catch (e) { return 0; }
 }
 
+async function cleanTestChannels() {
+  if (!ready) return 0;
+  try {
+    const r = await pool.query("DELETE FROM channels WHERE title ILIKE '%test%' OR title ILIKE '%probe%' OR title ILIKE '%dbg%'");
+    return r.rowCount;
+  } catch (e) { return 0; }
+}
+
 function isReady() { return ready; }
 
-module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, isReady };
+module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, isReady };

@@ -730,6 +730,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url.startsWith("/admin/clean")) {
+    const key = new URL(req.url, "http://x").searchParams.get("key");
+    if (key !== process.env.TELEGRAM_BOT_TOKEN) { res.writeHead(403).end("no"); return; }
+    const removed = await store.cleanTestChannels();
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ removed, left: (await store.listChannels()).length }));
+    return;
+  }
+
   if (req.method === "GET" && req.url.startsWith("/status")) {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
