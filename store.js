@@ -99,16 +99,15 @@ async function seedPosts(list) {
   } catch (e) { return 0; }
 }
 
+async function ensureVisits() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS visits (
+    id SERIAL PRIMARY KEY, source TEXT, chat_id TEXT, created TIMESTAMPTZ DEFAULT NOW())`);
+}
+
 async function recordVisit(source, chatId) {
   if (!ready) return false;
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS visits (
-        id SERIAL PRIMARY KEY,
-        source TEXT,
-        chat_id TEXT,
-        created TIMESTAMPTZ DEFAULT NOW()
-      )`);
+    await ensureVisits();
     await pool.query("INSERT INTO visits (source, chat_id) VALUES ($1,$2)", [source || "direct", String(chatId)]);
     return true;
   } catch (e) { console.error("recordVisit:", e.message); return false; }
@@ -117,13 +116,10 @@ async function recordVisit(source, chatId) {
 async function visitStats() {
   if (!ready) return [];
   try {
-    const r = await pool.query(`
-      CREATE TABLE IF NOT EXISTS visits (
-        id SERIAL PRIMARY KEY, source TEXT, chat_id TEXT, created TIMESTAMPTZ DEFAULT NOW());
-      SELECT source, COUNT(*)::int AS n FROM visits GROUP BY source ORDER BY n DESC LIMIT 10`);
-    const last = r[r.length - 1];
-    return (last && last.rows) ? r.rows : [];
-  } catch (e) { return []; }
+    await ensureVisits();
+    const r = await pool.query("SELECT source, COUNT(*)::int AS n FROM visits GROUP BY source ORDER BY n DESC LIMIT 10");
+    return r.rows || [];
+  } catch (e) { console.error("visitStats:", e.message); return []; }
 }
 
 async function cleanTestChannels() {
