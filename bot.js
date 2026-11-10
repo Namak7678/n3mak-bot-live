@@ -7,6 +7,13 @@ const BASE44_TOKEN = process.env.BASE44_SERVICE_TOKEN || process.env.BASE44_TOKE
 const fs = require("fs");
 const store = require("./store");
 store.init();
+const POST_EVERY_MS = 6 * 60 * 60 * 1000;
+const SEED_POSTS = [
+  "فحصنا اسم شركة في قوائم تسريب الفدية المنشورة. النتيجة لا تظهر في أي تقرير أمني عادي. اكتب /dive في @N3mak_bot",
+  "موقعك يخبرني بأكثر مما تظن: التقنية، والقناة التي تفتقدها، وكم تكلفك. اكتب /blue في @N3mak_bot",
+  "لا تقرأ تقريرا أمنيا يقول أنت آمن. اقرأ واحدا يقول: هذه مصادري، وهذا ما لا أغطيه، وهذه خطواتك الأربع.",
+  "كل رسالة عميل بلا رد فوري هي عميل يشتري من غيرك. مساعد يرد في ثانية، من 900 دولار.",
+];
 const STORE_PATH = process.env.STORE_PATH || "./n3mak_store.json";
 function loadStore() {
   try { return JSON.parse(fs.readFileSync(STORE_PATH, "utf8")); } catch { return { channels: [], orders: [] }; }
@@ -727,6 +734,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
       durable: store.isReady(),
+      autonomy: "broadcast every 6h from Neon queue",
       channels_db: await store.listChannels(),
       orders_db: await store.recentOrders(),
       channels: STORE.channels || [],
@@ -752,6 +760,22 @@ const server = http.createServer(async (req, res) => {
   }
   res.writeHead(404).end();
 });
+
+async function broadcastTick() {
+  try {
+    await store.seedPosts(SEED_POSTS);
+    const chans = await store.listChannels();
+    if (!chans.length) return;
+    const post = await store.nextPost();
+    if (!post) return;
+    for (const c of chans) {
+      await tg("sendMessage", { chat_id: c.chat_id, text: post.body }).catch(() => null);
+    }
+    console.log(`broadcast ${post.id} to ${chans.length} channels`);
+  } catch (e) { console.error("broadcast:", e.message); }
+}
+setInterval(broadcastTick, POST_EVERY_MS);
+setTimeout(broadcastTick, 90 * 1000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`n3mak bot listening on ${PORT}`));

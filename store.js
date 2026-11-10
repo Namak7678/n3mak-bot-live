@@ -68,6 +68,37 @@ async function recentOrders() {
   } catch (e) { return []; }
 }
 
+async function nextPost() {
+  if (!ready) return null;
+  try {
+    const r = await pool.query(`
+      CREATE TABLE IF NOT EXISTS posts (
+        id SERIAL PRIMARY KEY,
+        body TEXT NOT NULL,
+        sent BOOLEAN DEFAULT FALSE,
+        sent_at TIMESTAMPTZ,
+        created TIMESTAMPTZ DEFAULT NOW()
+      );
+    `).then(() => pool.query("SELECT id, body FROM posts WHERE sent = FALSE ORDER BY id LIMIT 1"));
+    if (!r.rows.length) return null;
+    await pool.query("UPDATE posts SET sent = TRUE, sent_at = NOW() WHERE id = $1", [r.rows[0].id]);
+    return r.rows[0];
+  } catch (e) { console.error("nextPost:", e.message); return null; }
+}
+
+async function seedPosts(list) {
+  if (!ready || !list.length) return 0;
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS posts (
+      id SERIAL PRIMARY KEY, body TEXT NOT NULL, sent BOOLEAN DEFAULT FALSE,
+      sent_at TIMESTAMPTZ, created TIMESTAMPTZ DEFAULT NOW())`);
+    const empty = await pool.query("SELECT COUNT(*)::int AS n FROM posts");
+    if (empty.rows[0].n > 0) return 0;
+    for (const body of list) await pool.query("INSERT INTO posts (body) VALUES ($1)", [body]);
+    return list.length;
+  } catch (e) { return 0; }
+}
+
 function isReady() { return ready; }
 
-module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, isReady };
+module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, isReady };
