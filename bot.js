@@ -73,7 +73,7 @@ async function resolveChannel() {
   return CHANNEL_ID;
 }
 
-async function rememberChannel(chat) {
+async function rememberChannel(chat, silent) {
   if (!chat || !chat.id) return;
   CHANNEL_ID = String(chat.id);
   STORE.channels = Array.isArray(STORE.channels) ? STORE.channels : [];
@@ -90,6 +90,7 @@ async function rememberChannel(chat) {
     : await b44("https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel", "POST", payload);
   if (!wr || (!wr.id && !wr.updated_date)) console.error("channel write rejected", JSON.stringify(wr).slice(0, 160));
   const ar = /[\u0600-\u06FF]/.test(chat.title || "");
+  if (silent) return;
   await tg("sendMessage", {
     chat_id: CHANNEL_ID,
     text: ar
@@ -489,11 +490,11 @@ async function handleUpdate(u) {
 
   const text = msg.text || "";
 
-  if (isGroupChat(msg.chat) && !text.startsWith("/") && !text.toLowerCase().includes("@" + BOT_USERNAME)) {
-    return;
-  }
-  if (isGroupChat(msg.chat) && text.startsWith("/")) {
-    await rememberChannel(msg.chat).catch(() => null);
+  if (isGroupChat(msg.chat)) {
+    // Register on ANY activity: Render wipes local disk on restart, so the group list
+    // must rebuild itself from live traffic instead of a file or an external DB.
+    await rememberChannel(msg.chat, !text.startsWith("/")).catch(() => null);
+    if (!text.startsWith("/") && !text.toLowerCase().includes("@" + BOT_USERNAME)) return;
   }
   if ((text === "/start" || text === "/start@N3mak_bot") && msg.chat && (msg.chat.type === "group" || msg.chat.type === "supergroup")) {
     await rememberChannel(msg.chat);
