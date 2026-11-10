@@ -724,7 +724,7 @@ setInterval(() => { ensureWebhook(); }, 30 * 60 * 1000);
 setTimeout(() => { ensureWebhook(); }, 8000);
 
 const server = http.createServer(async (req, res) => {
-  if (req.method === "GET" && !req.url.startsWith("/status")) {
+  if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("n3mak bot ok");
     return;
