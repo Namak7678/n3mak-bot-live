@@ -744,6 +744,8 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({
       durable: store.isReady(),
       autonomy: "broadcast every 6h from Neon queue",
+      self_pings: SELF_PINGS,
+      keepalive: "self ping every 9 min",
       channels_db: await store.listChannels(),
       orders_db: await store.recentOrders(),
       channels: STORE.channels || [],
@@ -784,7 +786,18 @@ async function broadcastTick() {
   } catch (e) { console.error("broadcast:", e.message); }
 }
 setInterval(broadcastTick, POST_EVERY_MS);
-setTimeout(broadcastTick, 90 * 1000);
+setTimeout(broadcastTick, 45 * 1000);
+
+// Self keep-alive: Render's free tier sleeps after 15 minutes without inbound traffic.
+// Pinging our own public URL counts as inbound, so once awake the bot stays awake.
+let SELF_PINGS = 0;
+const PUBLIC_URL = process.env.PUBLIC_URL || "https://n3mak-bot-n7dx.onrender.com";
+setInterval(async () => {
+  try {
+    const r = await fetch(`${PUBLIC_URL}/health`, { signal: AbortSignal.timeout(20000) });
+    if (r.ok) SELF_PINGS += 1;
+  } catch (e) { /* next tick */ }
+}, 9 * 60 * 1000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`n3mak bot listening on ${PORT}`));
