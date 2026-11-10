@@ -1,1 +1,15 @@
-{"name":"n3mak-bot-live","version":"1.0.0","private":true,"main":"bot.js","engines":{"node":">=20"},"scripts":{"start":"node bot.js"}}
+{
+  "name": "n3mak-bot-live",
+  "version": "1.0.0",
+  "private": true,
+  "main": "bot.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  }
+}

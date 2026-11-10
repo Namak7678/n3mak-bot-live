@@ -5,6 +5,8 @@ const http = require("http");
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const BASE44_TOKEN = process.env.BASE44_SERVICE_TOKEN || process.env.BASE44_TOKEN || process.env.BASE44_KEY || "";
 const fs = require("fs");
+const store = require("./store");
+store.init();
 const STORE_PATH = process.env.STORE_PATH || "./n3mak_store.json";
 function loadStore() {
   try { return JSON.parse(fs.readFileSync(STORE_PATH, "utf8")); } catch { return { channels: [], orders: [] }; }
@@ -81,6 +83,7 @@ async function rememberChannel(chat, silent) {
     STORE.channels.push({ chat_id: CHANNEL_ID, title: chat.title || "", active: true, added: new Date().toISOString() });
     saveStore(STORE);
   }
+  await store.upsertChannel(CHANNEL_ID, chat.title || "").catch(() => null);
   const rows = await b44("https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Channel?limit=5", "GET");
   const list = Array.isArray(rows) ? rows : rows && rows.data ? rows.data : [];
   const found = list.find((r) => String(r.chat_id) === CHANNEL_ID);
@@ -713,7 +716,7 @@ async function ensureWebhook() {
 setInterval(() => { ensureWebhook(); }, 30 * 60 * 1000);
 setTimeout(() => { ensureWebhook(); }, 8000);
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && !req.url.startsWith("/status")) {
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("n3mak bot ok");
@@ -723,6 +726,9 @@ const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url.startsWith("/status")) {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
+      durable: store.isReady(),
+      channels_db: await store.listChannels(),
+      orders_db: await store.recentOrders(),
       channels: STORE.channels || [],
       orders: (STORE.orders || []).slice(-10),
       base44_token_present: Boolean(BASE44_TOKEN),
