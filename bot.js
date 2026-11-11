@@ -809,6 +809,44 @@ const server = http.createServer(async (req, res) => {
   res.writeHead(404).end();
 });
 
+
+// Publish the radar as a public page on GitHub Pages: the bot owns its own outlet,
+// so the feed is indexable and shareable without any third party dashboard.
+async function publishRadarPage() {
+  const token = process.env.GITHUB_ACCESS_TOKEN;
+  if (!token) return;
+  try {
+    const sig = await store.recentSignals(60);
+    if (!sig.length) return;
+    const esc = (s) => String(s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    const rows = sig.map((x) => `<tr><td>${esc(x.title)}</td><td>${esc(x.detail)}</td><td>${x.score}</td></tr>`).join("");
+    const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>N3mak Radar — published exposure signals</title>
+<style>body{background:#07080b;color:#eef1f8;font-family:system-ui,sans-serif;line-height:1.7;max-width:900px;margin:0 auto;padding:30px 18px}
+h1{font-size:26px}h2{font-size:18px;color:#22d3ee}table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{border:1px solid #232733;padding:8px;text-align:left;vertical-align:top}th{color:#22d3ee}
+.btn{display:inline-block;background:#22d3ee;color:#04121a;font-weight:700;padding:12px 20px;border-radius:10px;text-decoration:none;margin:16px 0}
+.dim{color:#98a2b6;font-size:13px}</style></head><body>
+<h1>N3mak Radar</h1>
+<p class="dim">Signals built from published leak-site victims. Updated automatically. ${new Date().toISOString().slice(0,16).replace("T"," ")} UTC</p>
+<a class="btn" href="https://t.me/N3mak_bot?start=radar_page">Get the daily brief in Telegram</a>
+<table><tr><th>Victim</th><th>Details</th><th>Priority</th></tr>${rows}</table>
+<p class="dim">N3mak lists only what is already published by the leak groups themselves. It does not probe, breach or verify any network.</p>
+</body></html>`;
+    const api = "https://api.github.com/repos/Namak7678/n3mak-radar/contents/index.html";
+    let sha = null;
+    try {
+      const r = await fetch(api, { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" } });
+      if (r.ok) sha = (await r.json()).sha;
+    } catch (e) { /* new file */ }
+    const body = { message: "Radar update", content: Buffer.from(html).toString("base64"), branch: "main" };
+    if (sha) body.sha = sha;
+    const put = await fetch(api, { method: "PUT", headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "content-type": "application/json" }, body: JSON.stringify(body) });
+    console.log("radar page publish:", put.status);
+  } catch (e) { console.error("publishRadarPage:", e.message); }
+}
+
 async function broadcastTick() {
   try {
     await store.seedPosts(SEED_POSTS);
@@ -845,6 +883,8 @@ async function radarTick() {
 }
 
 setTimeout(radarTick, 40 * 1000);
+setTimeout(publishRadarPage, 75 * 1000);
+setInterval(publishRadarPage, 6 * 60 * 60 * 1000);
 setInterval(radarTick, 6 * 60 * 60 * 1000);
 setInterval(broadcastTick, POST_EVERY_MS);
 setTimeout(broadcastTick, 45 * 1000);
