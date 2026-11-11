@@ -999,6 +999,55 @@ const server = http.createServer(async (req, res) => {
 
 // Publish the radar as a public page on GitHub Pages: the bot owns its own outlet,
 // so the feed is indexable and shareable without any third party dashboard.
+
+async function ghPut(path, content, message) {
+  const token = process.env.GITHUB_ACCESS_TOKEN;
+  if (!token) return false;
+  const api = `https://api.github.com/repos/Namak7678/n3mak-radar/contents/${path}`;
+  let sha = null;
+  try {
+    const r = await fetch(api, { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" } });
+    if (r.ok) sha = (await r.json()).sha;
+  } catch (e) { /* new file */ }
+  const body = { message: message || "Radar update", content: Buffer.from(content).toString("base64"), branch: "main" };
+  if (sha) body.sha = sha;
+  const put = await fetch(api, {
+    method: "PUT",
+    headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return put.ok;
+}
+
+function countryPage(cc, row, signals) {
+  const esc = (s) => String(s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const color = row.level === "critical" ? "#e11d48" : row.level === "elevated" ? "#f59e0b" : "#22d3ee";
+  const list = signals.map((s) => `<tr><td>${esc(s.title)}</td><td>${esc(s.detail)}</td></tr>`).join("");
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${cc} ransomware exposure index — N3mak</title>
+<meta name="description" content="Published ransomware victims in ${cc}: current index ${row.index}/100, ${row.victims} published cases, updated automatically.">
+<style>body{background:#07080b;color:#eef1f8;font-family:system-ui,sans-serif;margin:0;line-height:1.7}
+.wrap{max-width:760px;margin:0 auto;padding:32px 18px 70px}h1{font-size:27px}
+h2{font-size:17px;color:#22d3ee;margin-top:26px}.big{font-size:44px;font-weight:800;color:${color}}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{border-bottom:1px solid #1b1f28;padding:8px;text-align:left}
+th{color:#22d3ee}.dim{color:#98a2b6;font-size:13px}
+.btn{display:inline-block;background:#22d3ee;color:#04121a;font-weight:700;padding:11px 18px;border-radius:10px;text-decoration:none;margin-top:14px}
+img{margin-top:12px}</style></head><body><div class="wrap">
+<h1>${cc} exposure index</h1>
+<p class="big">${row.index}/100 <span style="font-size:15px;color:#98a2b6">${esc(row.level)}</span></p>
+<p class="dim">Based on ${row.victims} companies that ransomware groups published in ${cc}. Updated automatically by the N3mak agent.</p>
+<img src="https://n3mak-bot-n7dx.onrender.com/badge/${cc}.svg" alt="${cc} exposure badge" height="26">
+<h2>Recent published victims</h2>
+<table><tr><th>Company</th><th>Details</th></tr>${list || '<tr><td colspan="2" class="dim">No signals in this window.</td></tr>'}</table>
+<h2>Put this badge on your site</h2>
+<p class="dim">Copy one line, it stays current:</p>
+<pre style="background:#12141b;padding:12px;border-radius:10px;overflow-x:auto;font-size:12px">&lt;img src="https://n3mak-bot-n7dx.onrender.com/badge/${cc}.svg" alt="${cc} exposure" height="26"&gt;</pre>
+<a class="btn" href="https://t.me/N3mak_bot?start=cc_${cc.toLowerCase()}">Get the weekly brief for ${cc}</a>
+<p class="dim">Sources are publications by the leak groups themselves. This is not a penetration test.</p>
+</div></body></html>`;
+}
+
 async function publishRadarPage() {
   const token = process.env.GITHUB_ACCESS_TOKEN;
   if (!token) return;
@@ -1040,6 +1089,14 @@ td,th{border:1px solid #232733;padding:8px;text-align:left;vertical-align:top}th
     if (sha) body.sha = sha;
     const put = await fetch(api, { method: "PUT", headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "content-type": "application/json" }, body: JSON.stringify(body) });
     console.log("radar page publish:", put.status);
+
+    // country pages: each one is a small SEO asset with a live badge and a CTA
+    for (const c of (idx || []).slice(0, 10)) {
+      const sigs = await store.signalsByCountry(c.country, 12);
+      const ok = await ghPut(`${c.country}.html`, countryPage(c.country, c, sigs), `Country page ${c.country}`);
+      if (!ok) console.log("country page failed:", c.country);
+    }
+    console.log("country pages published:", Math.min(10, (idx || []).length));
   } catch (e) { console.error("publishRadarPage:", e.message); }
 }
 
