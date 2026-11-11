@@ -285,6 +285,25 @@ async function signalsByCountry(country, limit) {
   } catch (e) { return []; }
 }
 
+async function exposureIndex() {
+  if (!ready) return [];
+  try {
+    await ensureSignals();
+    const r = await pool.query(`
+      SELECT upper(substring(detail from 'country: ([A-Za-z]{2})')) AS country, COUNT(*)::int AS n
+      FROM signals WHERE detail ~ 'country: [A-Za-z]{2}'
+      GROUP BY 1 ORDER BY n DESC LIMIT 60`);
+    const rows = r.rows.filter((x) => x.country);
+    const max = rows.length ? Math.max(...rows.map((x) => x.n)) : 1;
+    return rows.map((x) => ({
+      country: x.country,
+      victims: x.n,
+      index: Math.min(100, Math.round((x.n / max) * 100)),
+      level: x.n / max > 0.66 ? "critical" : x.n / max > 0.33 ? "elevated" : "watch",
+    }));
+  } catch (e) { console.error("exposureIndex:", e.message); return []; }
+}
+
 async function cleanTestChannels() {
   if (!ready) return 0;
   try {
@@ -295,4 +314,4 @@ async function cleanTestChannels() {
 
 function isReady() { return ready; }
 
-module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, createInvoice, getInvoice, pendingInvoices, markInvoicePaid, invoiceStats, createClient, getClient, countClients, addSubscriber, listSubscribers, signalsByCountry, isReady };
+module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, createInvoice, getInvoice, pendingInvoices, markInvoicePaid, invoiceStats, createClient, getClient, countClients, addSubscriber, listSubscribers, signalsByCountry, exposureIndex, isReady };

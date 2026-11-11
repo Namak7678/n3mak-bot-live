@@ -664,6 +664,17 @@ async function handleUpdate(u) {
     return;
   }
 
+  if (text.startsWith("/index")) {
+    const idx = await store.exposureIndex();
+    if (!idx.length) { await tg("sendMessage", { chat_id: msg.chat.id, text: "المؤشر قيد الحساب، اكتب /index بعد دقائق." }); return; }
+    const top = idx.slice(0, 12).map((x, i) => `${i + 1}. ${x.country} — ${x.index}/100 (${x.victims} حالة، ${x.level})`).join("\n");
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `مؤشر التعرض N3mak\n\n${top}\n\nشارة قابلة للتضمين:\nhttps://n3mak-bot-n7dx.onrender.com/badge/${idx[0].country}.svg\nاللوحة: https://namak7678.github.io/n3mak-radar/`,
+    });
+    return;
+  }
+
   if (text.startsWith("/radar")) {
     const sig = await store.recentSignals(7);
     if (!sig.length) {
@@ -872,6 +883,29 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url.startsWith("/api/index")) {
+    const idx = await store.exposureIndex();
+    res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
+    res.end(JSON.stringify({ updated: new Date().toISOString(), countries: idx.slice(0, 60) }));
+    return;
+  }
+
+  if (req.method === "GET" && req.url.startsWith("/badge/")) {
+    const cc = (req.url.split("/")[2] || "").split(".")[0].toUpperCase().slice(0, 2);
+    const idx = await store.exposureIndex();
+    const row = idx.find((x) => x.country === cc);
+    const value = row ? `${row.index}/100 ${row.level}` : "no data";
+    const color = !row ? "#555" : row.level === "critical" ? "#e11d48" : row.level === "elevated" ? "#f59e0b" : "#22d3ee";
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="230" height="26" role="img" aria-label="N3mak exposure ${cc}">
+<rect width="230" height="26" fill="#0b0d12"/>
+<rect x="0" width="96" height="26" fill="#12141b"/>
+<text x="10" y="17" font-family="Verdana" font-size="10" fill="#98a2b6">N3MAK EXPOSURE ${cc}</text>
+<text x="104" y="17" font-family="Verdana" font-size="11" font-weight="bold" fill="${color}">${value}</text></svg>`;
+    res.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "public, max-age=1800" });
+    res.end(svg);
+    return;
+  }
+
   if (req.method === "GET" && req.url.startsWith("/api/radar")) {
     const u = new URL(req.url, "http://x");
     const country = (u.searchParams.get("country") || "").trim();
@@ -957,7 +991,12 @@ async function publishRadarPage() {
     const sig = await store.recentSignals(60);
     if (!sig.length) return;
     const esc = (s) => String(s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-    const rows = sig.map((x) => `<tr><td>${esc(x.title)}</td><td>${esc(x.detail)}</td><td>${x.score}</td></tr>`).join("");
+    const idx = await store.exposureIndex();
+    const board = idx.slice(0, 25).map((x, i) => {
+      const color = x.level === "critical" ? "#e11d48" : x.level === "elevated" ? "#f59e0b" : "#22d3ee";
+      return `<tr><td>${i + 1}</td><td>${esc(x.country)}</td><td style="color:${color};font-weight:700">${x.index}/100</td><td>${x.victims}</td><td>${esc(x.level)}</td></tr>`;
+    }).join("");
+    const rows = sig.slice(0, 40).map((x) => `<tr><td>${esc(x.title)}</td><td>${esc(x.detail)}</td><td>${x.score}</td></tr>`).join("");
     const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>N3mak Radar — published exposure signals</title>
@@ -969,6 +1008,10 @@ td,th{border:1px solid #232733;padding:8px;text-align:left;vertical-align:top}th
 <h1>N3mak Radar</h1>
 <p class="dim">Signals built from published leak-site victims. Updated automatically. ${new Date().toISOString().slice(0,16).replace("T"," ")} UTC</p>
 <a class="btn" href="https://t.me/N3mak_bot?start=radar_page">Get the daily brief in Telegram</a>
+<h2>N3mak Exposure Index</h2>
+<p class="dim">Computed from published leak-site victims. A country index of 100 means it carries the largest share of published victims in the current window.</p>
+<table><tr><th>#</th><th>Country</th><th>Index</th><th>Victims</th><th>Level</th></tr>${board}</table>
+<h2>Latest signals</h2>
 <table><tr><th>Victim</th><th>Details</th><th>Priority</th></tr>${rows}</table>
 <p class="dim">N3mak lists only what is already published by the leak groups themselves. It does not probe, breach or verify any network.</p>
 </body></html>`;
