@@ -122,6 +122,41 @@ async function visitStats() {
   } catch (e) { console.error("visitStats:", e.message); return []; }
 }
 
+async function ensureSignals() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS signals (
+    id SERIAL PRIMARY KEY, kind TEXT, title TEXT, detail TEXT,
+    score INT DEFAULT 0, created TIMESTAMPTZ DEFAULT NOW(), UNIQUE(title))`);
+}
+
+async function addSignal(kind, title, detail, score) {
+  if (!ready) return false;
+  try {
+    await ensureSignals();
+    await pool.query(
+      "INSERT INTO signals (kind, title, detail, score) VALUES ($1,$2,$3,$4) ON CONFLICT (title) DO NOTHING",
+      [kind, title, detail, score || 0]);
+    return true;
+  } catch (e) { console.error("addSignal:", e.message); return false; }
+}
+
+async function recentSignals(limit) {
+  if (!ready) return [];
+  try {
+    await ensureSignals();
+    const r = await pool.query("SELECT kind, title, detail, score, created FROM signals ORDER BY id DESC LIMIT $1", [limit || 5]);
+    return r.rows || [];
+  } catch (e) { return []; }
+}
+
+async function countSignals() {
+  if (!ready) return 0;
+  try {
+    await ensureSignals();
+    const r = await pool.query("SELECT COUNT(*)::int AS n FROM signals");
+    return r.rows[0].n;
+  } catch (e) { return 0; }
+}
+
 async function cleanTestChannels() {
   if (!ready) return 0;
   try {
@@ -132,4 +167,4 @@ async function cleanTestChannels() {
 
 function isReady() { return ready; }
 
-module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, isReady };
+module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, isReady };

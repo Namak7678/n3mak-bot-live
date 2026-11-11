@@ -596,6 +596,21 @@ async function handleUpdate(u) {
     return;
   }
 
+  if (text.startsWith("/radar")) {
+    const sig = await store.recentSignals(7);
+    if (!sig.length) {
+      await tg("sendMessage", { chat_id: msg.chat.id, text: "الرادار يبني أولى إشاراته الآن. اكتب /radar بعد دقائق." });
+      return;
+    }
+    const lines = sig.map((x, i) => `${i + 1}. ${x.title}${x.detail ? "\n" + x.detail : ""}`).join("\n\n");
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `رادار N3mak — أحدث الإشارات\n\n${lines}\n\nالتقرير الكامل مع الأولويات اليومية: اشتراك برو 900 نجمة شهريا عبر /sub`,
+      reply_markup: { inline_keyboard: [[{ text: "اشتراك برو — 900 ⭐", callback_data: "plan_pro" }]] },
+    });
+    return;
+  }
+
   if (text.startsWith("/outlets")) {
     const cat = text.replace("/outlets", "").trim().toLowerCase();
     const list = cat ? OUTLETS.filter((o) => o.cat === cat) : OUTLETS;
@@ -765,6 +780,7 @@ const server = http.createServer(async (req, res) => {
       autonomy: "broadcast every 6h from Neon queue",
       self_pings: SELF_PINGS,
       outlets: OUTLETS.length,
+      signals: await store.countSignals(),
       visits: await store.visitStats(),
       keepalive: "self ping every 9 min",
       channels_db: await store.listChannels(),
@@ -806,6 +822,30 @@ async function broadcastTick() {
     console.log(`broadcast ${post.id} to ${chans.length} channels`);
   } catch (e) { console.error("broadcast:", e.message); }
 }
+// N3mak Radar: the bot builds its own intelligence feed from public leak data.
+// Owned end to end, no third party dashboard, no API key the owner has to manage.
+async function radarTick() {
+  try {
+    const feed = await leakFeed();
+    let added = 0;
+    for (const v of feed.slice(0, 40)) {
+      const title = String(v.victim || v.post_title || "").slice(0, 120);
+      if (!title) continue;
+      const detail = [
+        v.group_name ? `group: ${v.group_name}` : "",
+        v.country ? `country: ${v.country}` : "",
+        v.discovered || v.published ? `date: ${(v.discovered || v.published).toString().slice(0, 10)}` : "",
+        v.domain ? `domain: ${v.domain}` : "",
+      ].filter(Boolean).join(" · ");
+      const score = (v.country && /united|germany|france|netherland|emirates|russia|egypt|saudi/i.test(v.country)) ? 8 : 5;
+      if (await store.addSignal("leak", title, detail, score)) added += 1;
+    }
+    console.log(`radar: ${added} new signals`);
+  } catch (e) { console.error("radar:", e.message); }
+}
+
+setTimeout(radarTick, 40 * 1000);
+setInterval(radarTick, 6 * 60 * 60 * 1000);
 setInterval(broadcastTick, POST_EVERY_MS);
 setTimeout(broadcastTick, 45 * 1000);
 
