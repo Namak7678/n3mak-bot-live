@@ -224,6 +224,67 @@ async function invoiceStats() {
   } catch (e) { return { paid: 0, pending: 0, volume: 0 }; }
 }
 
+async function ensureClients() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS clients (
+    code TEXT PRIMARY KEY, name TEXT, chat_id TEXT, plan TEXT DEFAULT 'starter',
+    status TEXT DEFAULT 'active', created TIMESTAMPTZ DEFAULT NOW())`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS subscribers (
+    chat_id TEXT PRIMARY KEY, plan TEXT, country TEXT, since TIMESTAMPTZ DEFAULT NOW())`);
+}
+
+async function createClient(name, chatId) {
+  if (!ready) return null;
+  try {
+    await ensureClients();
+    const code = "CL" + Date.now().toString(36).toUpperCase().slice(-6);
+    await pool.query("INSERT INTO clients (code, name, chat_id) VALUES ($1,$2,$3)", [code, name, String(chatId)]);
+    return { code, name };
+  } catch (e) { console.error("createClient:", e.message); return null; }
+}
+
+async function getClient(code) {
+  if (!ready) return null;
+  try {
+    await ensureClients();
+    const c = await pool.query("SELECT code, name, plan, status, created FROM clients WHERE code=$1", [code]);
+    if (!c.rows.length) return null;
+    const cl = c.rows[0];
+    const inv = await pool.query(
+      "SELECT code, product, amount, status, created FROM invoices WHERE chat_id=(SELECT chat_id FROM clients WHERE code=$1) ORDER BY created DESC LIMIT 10", [code]);
+    return { ...cl, invoices: inv.rows || [] };
+  } catch (e) { return null; }
+}
+
+async function countClients() {
+  if (!ready) return 0;
+  try { await ensureClients(); return (await pool.query("SELECT COUNT(*)::int AS n FROM clients")).rows[0].n; } catch (e) { return 0; }
+}
+
+async function addSubscriber(chatId, plan, country) {
+  if (!ready) return false;
+  try {
+    await ensureClients();
+    await pool.query(`INSERT INTO subscribers (chat_id, plan, country) VALUES ($1,$2,$3)
+      ON CONFLICT (chat_id) DO UPDATE SET plan=EXCLUDED.plan, country=EXCLUDED.country`, [String(chatId), plan, country || null]);
+    return true;
+  } catch (e) { return false; }
+}
+
+async function listSubscribers() {
+  if (!ready) return [];
+  try { await ensureClients(); return (await pool.query("SELECT chat_id, plan, country FROM subscribers")).rows || []; } catch (e) { return []; }
+}
+
+async function signalsByCountry(country, limit) {
+  if (!ready) return [];
+  try {
+    await ensureSignals();
+    if (!country) return (await pool.query("SELECT title, detail, score FROM signals ORDER BY id DESC LIMIT $1", [limit || 25])).rows;
+    return (await pool.query("SELECT title, detail, score FROM signals WHERE detail ILIKE $1 ORDER BY id DESC LIMIT $2",
+      ["%" + country + "%", limit || 25])).rows;
+  } catch (e) { return []; }
+}
+
 async function cleanTestChannels() {
   if (!ready) return 0;
   try {
@@ -234,4 +295,4 @@ async function cleanTestChannels() {
 
 function isReady() { return ready; }
 
-module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, createInvoice, getInvoice, pendingInvoices, markInvoicePaid, invoiceStats, isReady };
+module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, createInvoice, getInvoice, pendingInvoices, markInvoicePaid, invoiceStats, createClient, getClient, countClients, addSubscriber, listSubscribers, signalsByCountry, isReady };

@@ -460,6 +460,9 @@ async function handleUpdate(u) {
     const p = msg.successful_payment;
     const planKey = (p.invoice_payload || "").replace("plan_", "") || "basic";
     await recordSale(planKey, p.total_amount, p.telegram_payment_charge_id, msg.from.id, msg.from.username);
+    if (planKey === "pro" || planKey === "basic") {
+      await store.addSubscriber(msg.from.id, planKey, null).catch(() => null);
+    }
     if (planKey === "dive_report" || planKey === "blue_report" || planKey === "bundle_report") {
       await deliverReport(msg.chat.id, planKey);
       return;
@@ -610,6 +613,30 @@ async function handleUpdate(u) {
       ] },
     });
     LAST.set(msg.chat.id, { ...(LAST.get(msg.chat.id) || {}), blue: r });
+    return;
+  }
+
+  if (text.startsWith("/client")) {
+    const name = text.split(/\s+/).slice(1).join(" ").trim();
+    if (!name) {
+      await tg("sendMessage", { chat_id: msg.chat.id, text: "الاستخدام: /client اسم الشركة\nأنشئ لك صفحة عميل فيها فواتيرك وتقاريرك وحالة العمل." });
+      return;
+    }
+    const c = await store.createClient(name, msg.chat.id);
+    if (!c) { await tg("sendMessage", { chat_id: msg.chat.id, text: "تعذر إنشاء الملف الآن." }); return; }
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `تم إنشاء ملف العميل\n\nالشركة: ${c.name}\nالرمز: ${c.code}\n\nصفحتك: https://namak7678.github.io/n3mak-pay/portal/?id=${c.code}\nالعقد: https://namak7678.github.io/n3mak-pay/contract/?id=${c.code}`,
+    });
+    return;
+  }
+
+  if (text.startsWith("/subscribe")) {
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: "اشتراك رادار N3mak للوكالات\n\nتغذية أسبوعية بالشركات المعرضة في بلدك، مع القطاع والتاريخ والمجموعة.\n900 نجمة شهريا.",
+      reply_markup: { inline_keyboard: [[{ text: "اشتراك — 900 ⭐", callback_data: "plan_pro" }]] },
+    });
     return;
   }
 
@@ -816,6 +843,45 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url.startsWith("/api/client/")) {
+    const code = req.url.split("/").pop().split("?")[0].toUpperCase();
+    const cl = await store.getClient(code);
+    res.writeHead(cl ? 200 : 404, { "content-type": "application/json", "access-control-allow-origin": "*" });
+    res.end(JSON.stringify(cl || { error: "not found" }));
+    return;
+  }
+
+  if (req.method === "GET" && req.url.startsWith("/api/contract/")) {
+    const code = req.url.split("/").pop().split("?")[0].toUpperCase();
+    const inv = await store.getInvoice(code);
+    if (!inv) { res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify({ error: "not found" })); return; }
+    res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
+    res.end(JSON.stringify({
+      code: inv.code, product: inv.product, amount: Number(inv.amount), currency: inv.currency,
+      status: inv.status, issued: inv.created, paid_at: inv.paid_at,
+      provider: "N3mak", pay_address: inv.address,
+      terms: [
+        "Scope is the item named above, delivered within the agreed working days.",
+        "50 percent before the start of the work, 50 percent on delivery unless the invoice says otherwise.",
+        "The client provides access to the systems in scope within two working days of the start date.",
+        "Reports are built from public sources and are not a penetration test and never claim a breach.",
+        "Two rounds of revisions are included. Further changes are quoted separately.",
+        "Either side may end the engagement with seven days written notice; work delivered is payable.",
+      ],
+    }));
+    return;
+  }
+
+  if (req.method === "GET" && req.url.startsWith("/api/radar")) {
+    const u = new URL(req.url, "http://x");
+    const country = (u.searchParams.get("country") || "").trim();
+    const limit = Math.min(Number(u.searchParams.get("limit") || 25), 100);
+    const rows = await store.signalsByCountry(country, limit);
+    res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
+    res.end(JSON.stringify({ country: country || "all", count: rows.length, signals: rows }));
+    return;
+  }
+
   if (req.method === "GET" && req.url.startsWith("/admin/panel")) {
     const key = new URL(req.url, "http://x").searchParams.get("key");
     if (key !== process.env.TELEGRAM_BOT_TOKEN) { res.writeHead(403).end("no"); return; }
@@ -851,6 +917,8 @@ const server = http.createServer(async (req, res) => {
       outlets: OUTLETS.length,
       signals: await store.countSignals(),
       invoices: await store.invoiceStats(),
+      clients: await store.countClients(),
+      subscribers: (await store.listSubscribers()).length,
       visits: await store.visitStats(),
       keepalive: "self ping every 9 min",
       channels_db: await store.listChannels(),
