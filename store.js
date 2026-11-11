@@ -157,6 +157,73 @@ async function countSignals() {
   } catch (e) { return 0; }
 }
 
+async function ensureInvoices() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS invoices (
+    code TEXT PRIMARY KEY,
+    chat_id TEXT,
+    product TEXT,
+    amount NUMERIC NOT NULL,
+    currency TEXT DEFAULT 'USDC',
+    status TEXT DEFAULT 'pending',
+    baseline NUMERIC,
+    address TEXT,
+    created TIMESTAMPTZ DEFAULT NOW(),
+    paid_at TIMESTAMPTZ
+  )`);
+}
+
+async function createInvoice(chatId, product, amount, baseline, address) {
+  if (!ready) return null;
+  try {
+    await ensureInvoices();
+    const code = "NMK" + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 90 + 10);
+    await pool.query(
+      "INSERT INTO invoices (code, chat_id, product, amount, baseline, address) VALUES ($1,$2,$3,$4,$5,$6)",
+      [code, String(chatId), product || "N3mak service", amount, baseline, address]);
+    return { code, amount };
+  } catch (e) { console.error("createInvoice:", e.message); return null; }
+}
+
+async function getInvoice(code) {
+  if (!ready) return null;
+  try {
+    await ensureInvoices();
+    const r = await pool.query(
+      "SELECT code, product, amount, currency, status, address, created, paid_at FROM invoices WHERE code = $1", [code]);
+    return r.rows[0] || null;
+  } catch (e) { return null; }
+}
+
+async function pendingInvoices() {
+  if (!ready) return [];
+  try {
+    await ensureInvoices();
+    const r = await pool.query(
+      "SELECT code, chat_id, amount, baseline, address FROM invoices WHERE status = 'pending' ORDER BY created LIMIT 40");
+    return r.rows || [];
+  } catch (e) { return []; }
+}
+
+async function markInvoicePaid(code) {
+  if (!ready) return false;
+  try {
+    await pool.query("UPDATE invoices SET status='paid', paid_at=NOW() WHERE code=$1", [code]);
+    return true;
+  } catch (e) { return false; }
+}
+
+async function invoiceStats() {
+  if (!ready) return { paid: 0, pending: 0, volume: 0 };
+  try {
+    await ensureInvoices();
+    const r = await pool.query(`SELECT
+      COUNT(*) FILTER (WHERE status='paid')::int AS paid,
+      COUNT(*) FILTER (WHERE status='pending')::int AS pending,
+      COALESCE(SUM(amount) FILTER (WHERE status='paid'),0)::float AS volume FROM invoices`);
+    return r.rows[0];
+  } catch (e) { return { paid: 0, pending: 0, volume: 0 }; }
+}
+
 async function cleanTestChannels() {
   if (!ready) return 0;
   try {
@@ -167,4 +234,4 @@ async function cleanTestChannels() {
 
 function isReady() { return ready; }
 
-module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, isReady };
+module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, createInvoice, getInvoice, pendingInvoices, markInvoicePaid, invoiceStats, isReady };

@@ -258,6 +258,23 @@ async function checkPendingOrders() {
 
 setInterval(() => { checkPendingOrders().catch((e) => console.error("check orders", e.message)); }, 10 * 60 * 1000);
 
+async function checkInvoices() {
+  const list = await store.pendingInvoices();
+  if (!list.length) return;
+  const bal = await usdcBalance();
+  if (bal === null) return;
+  for (const inv of list) {
+    const expected = Number(inv.baseline || 0) + Number(inv.amount || 0);
+    if (bal + 0.005 < expected) continue;
+    await store.markInvoicePaid(inv.code);
+    await tg("sendMessage", {
+      chat_id: inv.chat_id,
+      text: `تم استلام الدفع ✅\n\nالفاتورة: ${inv.code}\nالمبلغ: ${inv.amount} USDC\n\nسجلتها مدفوعة وسنبدأ التنفيذ. شكرا لثقتك.`,
+    }).catch(() => null);
+  }
+}
+setInterval(() => checkInvoices().catch((e) => console.error("checkInvoices:", e.message)), 5 * 60 * 1000);
+
 const SYSTEM = `You are N3mak AI, a business assistant for small companies. Answer in the user's language (Arabic, Russian or English). Max 120 words. Concrete, no fluff.
 
 OFFERS (quote exactly, never invent others):
@@ -596,6 +613,30 @@ async function handleUpdate(u) {
     return;
   }
 
+  if (text.startsWith("/invoice")) {
+    const parts = text.split(/\s+/).slice(1);
+    const usd = Number(parts[0]);
+    if (!usd || usd < 20) {
+      await tg("sendMessage", { chat_id: msg.chat.id, text: "الاستخدام: /invoice 1500 مساعد خدمة عملاء\nالحد الأدنى 20 دولارا." });
+      return;
+    }
+    const product = parts.slice(1).join(" ") || "N3mak service";
+    const bal = await usdcBalance();
+    const cents = Math.floor(Math.random() * 89) + 10;
+    const amount = Number((usd + cents / 100).toFixed(2));
+    const inv = await store.createInvoice(msg.chat.id, product, amount, bal, PAY_ADDR);
+    if (!inv) {
+      await tg("sendMessage", { chat_id: msg.chat.id, text: "تعذر إنشاء الفاتورة الآن، حاول بعد دقيقة." });
+      return;
+    }
+    const link = `https://namak7678.github.io/n3mak-pay/?id=${inv.code}`;
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `فاتورة N3mak\n\nالرقم: ${inv.code}\nالبند: ${product}\nالمبلغ: ${amount} USDC (شبكة BNB Chain)\nالعنوان: ${PAY_ADDR}\n\nصفحة الفاتورة: ${link}\n\nالحالة تتحدث تلقائيا فور وصول التحويل، ويصلك إشعار هنا.`,
+    });
+    return;
+  }
+
   if (text.startsWith("/radar")) {
     const sig = await store.recentSignals(7);
     if (!sig.length) {
@@ -764,6 +805,34 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url.startsWith("/api/invoice/")) {
+    const code = req.url.split("/").pop().split("?")[0].toUpperCase();
+    const inv = await store.getInvoice(code);
+    res.writeHead(inv ? 200 : 404, { "content-type": "application/json", "access-control-allow-origin": "*" });
+    res.end(JSON.stringify(inv ? {
+      code: inv.code, product: inv.product, amount: Number(inv.amount), currency: inv.currency,
+      status: inv.status, created: inv.created, paid_at: inv.paid_at,
+    } : { error: "not found" }));
+    return;
+  }
+
+  if (req.method === "GET" && req.url.startsWith("/admin/panel")) {
+    const key = new URL(req.url, "http://x").searchParams.get("key");
+    if (key !== process.env.TELEGRAM_BOT_TOKEN) { res.writeHead(403).end("no"); return; }
+    const inv = await store.invoiceStats();
+    const chans = await store.listChannels();
+    const sigs = await store.countSignals();
+    const visits = await store.visitStats();
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(`<html dir="rtl"><body style="background:#07080b;color:#eef1f8;font-family:system-ui;padding:24px">
+    <h1>لوحة N3mak</h1>
+    <p>الفواتير: ${inv.paid} مدفوعة، ${inv.pending} منتظرة، الحجم ${inv.volume} USDC</p>
+    <p>القنوات المربوطة: ${chans.length} | الإشارات: ${sigs}</p>
+    <p>الزيارات: ${visits.map((v) => v.source + "=" + v.n).join(", ") || "لا شيء"}</p>
+    <p>الخدمة تعمل منذ ${Math.round(process.uptime())} ثانية</p></body></html>`);
+    return;
+  }
+
   if (req.method === "GET" && req.url.startsWith("/admin/clean")) {
     const key = new URL(req.url, "http://x").searchParams.get("key");
     if (key !== process.env.TELEGRAM_BOT_TOKEN) { res.writeHead(403).end("no"); return; }
@@ -781,6 +850,7 @@ const server = http.createServer(async (req, res) => {
       self_pings: SELF_PINGS,
       outlets: OUTLETS.length,
       signals: await store.countSignals(),
+      invoices: await store.invoiceStats(),
       visits: await store.visitStats(),
       keepalive: "self ping every 9 min",
       channels_db: await store.listChannels(),
