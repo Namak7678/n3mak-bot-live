@@ -304,6 +304,34 @@ async function exposureIndex() {
   } catch (e) { console.error("exposureIndex:", e.message); return []; }
 }
 
+async function ensureWatch() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS watch (
+    channel TEXT PRIMARY KEY, posts INT DEFAULT 0, last_at TIMESTAMPTZ)`);
+}
+
+async function touchWatch(channel, posts) {
+  if (!ready) return;
+  try {
+    await ensureWatch();
+    await pool.query(`INSERT INTO watch (channel, posts, last_at) VALUES ($1,$2,NOW())
+      ON CONFLICT (channel) DO UPDATE SET posts = watch.posts + $2, last_at = NOW()`, [channel, posts]);
+  } catch (e) { console.error("touchWatch:", e.message); }
+}
+
+async function watchStats() {
+  if (!ready) return [];
+  try { await ensureWatch(); return (await pool.query("SELECT channel, posts, last_at FROM watch ORDER BY posts DESC")).rows || []; }
+  catch (e) { return []; }
+}
+
+async function signalsByKind(kind, limit) {
+  if (!ready) return [];
+  try {
+    await ensureSignals();
+    return (await pool.query("SELECT title, detail, score, created FROM signals WHERE kind=$1 ORDER BY id DESC LIMIT $2", [kind, limit || 10])).rows || [];
+  } catch (e) { return []; }
+}
+
 async function cleanTestChannels() {
   if (!ready) return 0;
   try {
@@ -314,4 +342,4 @@ async function cleanTestChannels() {
 
 function isReady() { return ready; }
 
-module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, createInvoice, getInvoice, pendingInvoices, markInvoicePaid, invoiceStats, createClient, getClient, countClients, addSubscriber, listSubscribers, signalsByCountry, exposureIndex, isReady };
+module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, createInvoice, getInvoice, pendingInvoices, markInvoicePaid, invoiceStats, createClient, getClient, countClients, addSubscriber, listSubscribers, signalsByCountry, exposureIndex, touchWatch, watchStats, signalsByKind, isReady };

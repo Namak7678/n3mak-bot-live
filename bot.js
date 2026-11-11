@@ -664,6 +664,20 @@ async function handleUpdate(u) {
     return;
   }
 
+  if (text.startsWith("/dark")) {
+    const tg = await store.signalsByKind("tg", 8);
+    const watch = await store.watchStats();
+    const chans = watch.map((w) => `${w.channel} (${w.posts})`).join(", ") || "لا قنوات بعد";
+    const body = tg.length
+      ? tg.map((x, i) => `${i + 1}. ${x.title}\n${x.detail}`).join("\n\n")
+      : "لا إشارات بعد من القنوات العامة.";
+    await tg("sendMessage", {
+      chat_id: msg.chat.id,
+      text: `دارك ووتش\n\nالقنوات: ${chans}\n\n${body}`,
+    });
+    return;
+  }
+
   if (text.startsWith("/index")) {
     const idx = await store.exposureIndex();
     if (!idx.length) { await tg("sendMessage", { chat_id: msg.chat.id, text: "المؤشر قيد الحساب، اكتب /index بعد دقائق." }); return; }
@@ -950,6 +964,7 @@ const server = http.createServer(async (req, res) => {
       self_pings: SELF_PINGS,
       outlets: OUTLETS.length,
       signals: await store.countSignals(),
+      watch: (await store.watchStats()).length,
       invoices: await store.invoiceStats(),
       clients: await store.countClients(),
       subscribers: (await store.listSubscribers()).length,
@@ -1063,6 +1078,36 @@ async function radarTick() {
   } catch (e) { console.error("radar:", e.message); }
 }
 
+// Dark Watch: public leak and cyber channels that publish victims before the leak sites do.
+// Reads only the public preview pages, so no account and no scraping of private groups.
+const WATCH_CHANNELS = (process.env.WATCH_CHANNELS || "vxunderground,cybersecuritynews").split(",").map((x) => x.trim()).filter(Boolean);
+const WATCH_RX = /(leak|breach|ransom|stolen|data of|database|exposed|credentials|актив|утеч)/i;
+const DOMAIN_RX = /\b((?:[a-z0-9-]{2,}\.)+(?:com|net|org|io|co|ru|nl|de|ae|sa|eg|uk|fr|es|it|ca|us))\b/gi;
+
+async function darkWatchTick() {
+  let added = 0;
+  for (const ch of WATCH_CHANNELS) {
+    try {
+      const r = await fetch(`https://t.me/s/${ch}`, { headers: { "user-agent": "Mozilla/5.0 (compatible; N3makWatch/1.0)" } });
+      if (!r.ok) continue;
+      const html = await r.text();
+      const posts = [...html.matchAll(/class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/g)]
+        .map((m) => m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
+        .filter((t) => t.length > 40 && WATCH_RX.test(t));
+      for (const post of posts.slice(0, 12)) {
+        const dom = (post.match(DOMAIN_RX) || [])[0];
+        const title = (dom || post.slice(0, 80)).toLowerCase();
+        const detail = `source: telegram @${ch} · ${post.slice(0, 150)}`;
+        if (await store.addSignal("tg", title, detail, 7)) added += 1;
+      }
+      await store.touchWatch(ch, posts.length);
+    } catch (e) { console.error("darkWatch " + ch + ":", e.message); }
+  }
+  if (added) console.log(`dark watch: ${added} new signals`);
+}
+
+setTimeout(darkWatchTick, 55 * 1000);
+setInterval(darkWatchTick, 2 * 60 * 60 * 1000);
 setTimeout(radarTick, 40 * 1000);
 setTimeout(publishRadarPage, 75 * 1000);
 setInterval(publishRadarPage, 6 * 60 * 60 * 1000);
