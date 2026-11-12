@@ -1091,12 +1091,27 @@ td,th{border:1px solid #232733;padding:8px;text-align:left;vertical-align:top}th
     console.log("radar page publish:", put.status);
 
     // country pages: each one is a small SEO asset with a live badge and a CTA
-    for (const c of (idx || []).slice(0, 10)) {
+    for (const c of (idx || []).slice(0, 25)) {
       const sigs = await store.signalsByCountry(c.country, 12);
       const ok = await ghPut(`${c.country}.html`, countryPage(c.country, c, sigs), `Country page ${c.country}`);
       if (!ok) console.log("country page failed:", c.country);
     }
-    console.log("country pages published:", Math.min(10, (idx || []).length));
+    console.log("country pages published:", Math.min(25, (idx || []).length));
+
+    // Europe aggregate: the number agencies actually sell against
+    const EU = ["GB","NL","DE","FR","BE","IE","ES","IT","PT","AT","PL","SE","DK","FI","NO","CH","CZ","RO","GR","HU"];
+    const eu = (idx || []).filter((c) => EU.includes(c.country));
+    if (eu.length) {
+      const euRow = {
+        country: "Europe",
+        victims: eu.reduce((a, c) => a + c.victims, 0),
+        index: Math.round(eu.reduce((a, c) => a + c.index, 0) / eu.length),
+        level: eu.some((c) => c.level === "critical") ? "critical" : eu.some((c) => c.level === "elevated") ? "elevated" : "watch",
+      };
+      const euSignals = (await store.recentSignals(200)).filter((s) => /country: (GB|NL|DE|FR|BE|IE|ES|IT|PT|AT|PL|SE|DK|FI|NO|CH|CZ|RO|GR|HU)\b/.test(s.detail || "")).slice(0, 40);
+      await ghPut("europe.html", countryPage("Europe", euRow, euSignals), "Europe aggregate page");
+      console.log("europe page:", euRow.victims, "victims");
+    }
   } catch (e) { console.error("publishRadarPage:", e.message); }
 }
 
