@@ -340,6 +340,58 @@ async function signalsByKind(kind, limit) {
   } catch (e) { return []; }
 }
 
+async function ensureOutbox() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS outbox (
+    id SERIAL PRIMARY KEY, company TEXT, domain TEXT, country TEXT, subject TEXT,
+    body TEXT, status TEXT DEFAULT 'queued', created TIMESTAMPTZ DEFAULT NOW(), UNIQUE(domain))`);
+}
+
+async function queueDraft(company, domain, country, subject, body) {
+  if (!ready) return false;
+  try {
+    await ensureOutbox();
+    const r = await pool.query(
+      `INSERT INTO outbox (company, domain, country, subject, body) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (domain) DO NOTHING`, [company, domain, country, subject, body]);
+    return r.rowCount > 0;
+  } catch (e) { console.error("queueDraft:", e.message); return false; }
+}
+
+async function takeDrafts(n) {
+  if (!ready) return [];
+  try {
+    await ensureOutbox();
+    const r = await pool.query("SELECT id, company, domain, country, subject, body FROM outbox WHERE status='queued' ORDER BY id LIMIT $1", [n || 10]);
+    return r.rows || [];
+  } catch (e) { return []; }
+}
+
+async function markDraft(id, status) {
+  if (!ready) return;
+  try { await pool.query("UPDATE outbox SET status=$2 WHERE id=$1", [id, status]); } catch (e) { /* ignore */ }
+}
+
+async function outboxStats() {
+  if (!ready) return { queued: 0, sent: 0 };
+  try {
+    await ensureOutbox();
+    const r = await pool.query(`SELECT COUNT(*) FILTER (WHERE status='queued')::int AS queued,
+      COUNT(*) FILTER (WHERE status='sent')::int AS sent FROM outbox`);
+    return r.rows[0];
+  } catch (e) { return { queued: 0, sent: 0 }; }
+}
+
+async function freshVictimsWithDomain(limit) {
+  if (!ready) return [];
+  try {
+    await ensureSignals();
+    const r = await pool.query(`SELECT title, detail FROM signals
+      WHERE detail LIKE '%domain:%' AND detail ~ 'country: [A-Z]{2}'
+      ORDER BY id DESC LIMIT $1`, [limit || 40]);
+    return r.rows || [];
+  } catch (e) { return []; }
+}
+
 async function cleanTestChannels() {
   if (!ready) return 0;
   try {
@@ -350,4 +402,4 @@ async function cleanTestChannels() {
 
 function isReady() { return ready; }
 
-module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, createInvoice, getInvoice, pendingInvoices, markInvoicePaid, invoiceStats, recentInvoices, createClient, getClient, countClients, addSubscriber, listSubscribers, signalsByCountry, exposureIndex, touchWatch, watchStats, signalsByKind, isReady };
+module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, createInvoice, getInvoice, pendingInvoices, markInvoicePaid, invoiceStats, recentInvoices, createClient, getClient, countClients, addSubscriber, listSubscribers, signalsByCountry, exposureIndex, queueDraft, takeDrafts, markDraft, outboxStats, freshVictimsWithDomain, touchWatch, watchStats, signalsByKind, isReady };

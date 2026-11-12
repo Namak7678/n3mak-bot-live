@@ -934,6 +934,24 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url.startsWith("/admin/outbox")) {
+    const key = new URL(req.url, "http://x").searchParams.get("key");
+    if (key !== process.env.TELEGRAM_BOT_TOKEN) { res.writeHead(403).end("no"); return; }
+    const take = Number(new URL(req.url, "http://x").searchParams.get("n") || 10);
+    const rows = await store.takeDrafts(take);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(rows));
+    return;
+  }
+
+  if (req.method === "GET" && req.url.startsWith("/admin/draftdone")) {
+    const u = new URL(req.url, "http://x");
+    if (u.searchParams.get("key") !== process.env.TELEGRAM_BOT_TOKEN) { res.writeHead(403).end("no"); return; }
+    await store.markDraft(Number(u.searchParams.get("id")), "sent");
+    res.writeHead(200, { "content-type": "text/plain" }).end("ok");
+    return;
+  }
+
   if (req.method === "GET" && req.url.startsWith("/admin/panel")) {
     const key = new URL(req.url, "http://x").searchParams.get("key");
     if (key !== process.env.TELEGRAM_BOT_TOKEN) { res.writeHead(403).end("no"); return; }
@@ -970,6 +988,7 @@ const server = http.createServer(async (req, res) => {
       outlets: OUTLETS.length,
       signals: await store.countSignals(),
       watch: (await store.watchStats()).length,
+      outbox: await store.outboxStats(),
       invoices: await store.invoiceStats(),
       clients: await store.countClients(),
       subscribers: (await store.listSubscribers()).length,
@@ -1120,6 +1139,33 @@ td,th{border:1px solid #232733;padding:8px;text-align:left;vertical-align:top}th
   } catch (e) { console.error("publishRadarPage:", e.message); }
 }
 
+// Rescue engine: the agent writes its own outreach copy for freshly published victims,
+// so the outbound queue fills without a human writing a single line.
+function draftCopy(company, domain, country) {
+  const cc = country || "your market";
+  const subject = `${company} is on a leak site — one page you can send to your board`;
+  const body = `Hello,\n\n${company} appears in a ransomware group's published victim list for ${cc}. The entry names the group, the date and ${domain}.\n\nI am not selling a breach report. I build the response layer: an assistant that answers inbound enquiries instantly, collects what matters, and escalates only real emergencies. Companies in your position usually need it live before the story reaches their clients.\n\nThree working days, fixed price from 900 USD, and I can start today.\n\nFull picture of what is public about you: https://t.me/N3mak_bot?start=leak_${domain.replace(/\./g, "_").slice(0, 24)}\n\nIssa\nN3mak`;
+  return { subject, body };
+}
+
+async function rescueTick() {
+  try {
+    const rows = await store.freshVictimsWithDomain(40);
+    let added = 0;
+    for (const r of rows) {
+      const m = /domain: ([a-z0-9.\-]+)/i.exec(r.detail || "");
+      const c = /country: ([A-Z]{2})/.exec(r.detail || "");
+      if (!m) continue;
+      const domain = m[1].toLowerCase();
+      if (domain.length < 5 || /example|test/.test(domain)) continue;
+      const { subject, body } = draftCopy(r.title, domain, c ? c[1] : "");
+      if (await store.queueDraft(r.title, domain, c ? c[1] : "", subject, body)) added += 1;
+      if (added >= 12) break;
+    }
+    if (added) console.log(`rescue: queued ${added} drafts`);
+  } catch (e) { console.error("rescueTick:", e.message); }
+}
+
 async function broadcastTick() {
   try {
     await store.seedPosts(SEED_POSTS);
@@ -1203,6 +1249,8 @@ async function darkWatchTick() {
 }
 
 setTimeout(darkWatchTick, 55 * 1000);
+setTimeout(rescueTick, 95 * 1000);
+setInterval(rescueTick, 3 * 60 * 60 * 1000);
 setInterval(darkWatchTick, 2 * 60 * 60 * 1000);
 setTimeout(radarTick, 40 * 1000);
 setTimeout(publishRadarPage, 75 * 1000);
