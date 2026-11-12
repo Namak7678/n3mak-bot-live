@@ -1119,6 +1119,25 @@ async function radarTick() {
   try {
     const feed = await leakFeed();
     let added = 0;
+    // second, denser source: adds country and group for the index and widens coverage
+    try {
+      const r2 = await fetch("https://api.ransomware.live/v2/recentvictims", { headers: { accept: "application/json" } });
+      if (r2.ok) {
+        const extra = await r2.json();
+        for (const v of (Array.isArray(extra) ? extra : []).slice(0, 100)) {
+          const title = String(v.post_title || v.victim || v.description || "").slice(0, 120).replace(/\s+/g, " ").trim();
+          if (!title) continue;
+          const detail = [
+            v.group ? `group: ${v.group}` : "",
+            v.country ? `country: ${v.country}` : "",
+            (v.discovered || v.attackdate) ? `date: ${String(v.discovered || v.attackdate).slice(0, 10)}` : "",
+            v.domain ? `domain: ${v.domain}` : "",
+          ].filter(Boolean).join(" · ");
+          const hot = v.country && /^(GB|NL|DE|FR|AE|QA|SA|EG|RU|US|CA|IE|ES|IT)$/i.test(v.country);
+          if (await store.addSignal("leak", title, detail, hot ? 8 : 5)) added += 1;
+        }
+      }
+    } catch (e) { console.error("feed2:", e.message); }
     for (const v of feed.slice(0, 40)) {
       const title = String(v.victim || v.post_title || "").slice(0, 120);
       if (!title) continue;
