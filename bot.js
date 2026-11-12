@@ -945,6 +945,7 @@ const server = http.createServer(async (req, res) => {
     res.end(`<html dir="rtl"><body style="background:#07080b;color:#eef1f8;font-family:system-ui;padding:24px">
     <h1>لوحة N3mak</h1>
     <p>الفواتير: ${inv.paid} مدفوعة، ${inv.pending} منتظرة، الحجم ${inv.volume} USDC</p>
+    <p>${(await store.recentInvoices(5)).map((x) => `${x.code} · ${x.amount} · ${x.status}`).join("<br>")}</p>
     <p>القنوات المربوطة: ${chans.length} | الإشارات: ${sigs}</p>
     <p>الزيارات: ${visits.map((v) => v.source + "=" + v.n).join(", ") || "لا شيء"}</p>
     <p>الخدمة تعمل منذ ${Math.round(process.uptime())} ثانية</p></body></html>`);

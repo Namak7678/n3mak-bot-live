@@ -212,6 +212,14 @@ async function markInvoicePaid(code) {
   } catch (e) { return false; }
 }
 
+async function recentInvoices(n) {
+  if (!ready) return [];
+  try {
+    await ensureInvoices();
+    return (await pool.query("SELECT code, product, amount, status, created FROM invoices ORDER BY created DESC LIMIT $1", [n || 5])).rows || [];
+  } catch (e) { return []; }
+}
+
 async function invoiceStats() {
   if (!ready) return { paid: 0, pending: 0, volume: 0 };
   try {
@@ -342,4 +350,4 @@ async function cleanTestChannels() {
 
 function isReady() { return ready; }
 
-module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, createInvoice, getInvoice, pendingInvoices, markInvoicePaid, invoiceStats, createClient, getClient, countClients, addSubscriber, listSubscribers, signalsByCountry, exposureIndex, touchWatch, watchStats, signalsByKind, isReady };
+module.exports = { init, upsertChannel, listChannels, addOrder, recentOrders, nextPost, seedPosts, cleanTestChannels, recordVisit, visitStats, addSignal, recentSignals, countSignals, createInvoice, getInvoice, pendingInvoices, markInvoicePaid, invoiceStats, recentInvoices, createClient, getClient, countClients, addSubscriber, listSubscribers, signalsByCountry, exposureIndex, touchWatch, watchStats, signalsByKind, isReady };
