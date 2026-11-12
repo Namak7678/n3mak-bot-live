@@ -31,6 +31,9 @@ const OR_KEY = process.env.OPENROUTER_API_KEY || "";
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OR_MODELS = ["liquid/lfm-2.5-2.6b:free", "openrouter/free", "nvidia/nemotron-3.5-lightning:free"];
 const PAY_ADDR = "0xE18e7F67Ad6429577af6c394eBE94717A87B3Fae";
+// PayPal is offered as a lighter option for clients who do not hold crypto.
+// There is no API to confirm a paypal.me transfer, so these orders stay manual.
+const PAYPAL_ME = "https://paypal.me/IhabYous";
 const PAY_API = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/entities/Payment";
 const RPC = "https://bsc-dataseed.binance.org";
 const USDC_BSC = "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d";
@@ -659,7 +662,7 @@ async function handleUpdate(u) {
     const link = `https://namak7678.github.io/n3mak-pay/?id=${inv.code}`;
     await tg("sendMessage", {
       chat_id: msg.chat.id,
-      text: `فاتورة N3mak\n\nالرقم: ${inv.code}\nالبند: ${product}\nالمبلغ: ${amount} USDC (شبكة BNB Chain)\nالعنوان: ${PAY_ADDR}\n\nصفحة الفاتورة: ${link}\n\nالحالة تتحدث تلقائيا فور وصول التحويل، ويصلك إشعار هنا.`,
+      text: `فاتورة N3mak\n\nالرقم: ${inv.code}\nالبند: ${product}\nالمبلغ: ${amount} USDC (شبكة BNB Chain)\nالعنوان: ${PAY_ADDR}\nبديل بالبطاقة أو باي بال: ${PAYPAL_ME}\n\nصفحة الفاتورة: ${link}\n\nالحالة تتحدث تلقائيا فور وصول التحويل، ويصلك إشعار هنا.`,
     });
     return;
   }
@@ -864,6 +867,7 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify(inv ? {
       code: inv.code, product: inv.product, amount: Number(inv.amount), currency: inv.currency,
       status: inv.status, created: inv.created, paid_at: inv.paid_at,
+      paypal: PAYPAL_ME,
     } : { error: "not found" }));
     return;
   }
@@ -884,7 +888,7 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({
       code: inv.code, product: inv.product, amount: Number(inv.amount), currency: inv.currency,
       status: inv.status, issued: inv.created, paid_at: inv.paid_at,
-      provider: "N3mak", pay_address: inv.address,
+      provider: "N3mak", pay_address: inv.address, paypal: PAYPAL_ME,
       terms: [
         "Scope is the item named above, delivered within the agreed working days.",
         "50 percent before the start of the work, 50 percent on delivery unless the invoice says otherwise.",
