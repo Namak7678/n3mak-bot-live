@@ -8,7 +8,7 @@ const fs = require("fs");
 const store = require("./store");
 const OUTLETS = require("./outlets.json");
 store.init();
-const POST_EVERY_MS = 6 * 60 * 60 * 1000;
+const POST_EVERY_MS = 4 * 60 * 60 * 1000;
 const SEED_POSTS = [
   "فحصنا اسم شركة في قوائم تسريب الفدية المنشورة. النتيجة لا تظهر في أي تقرير أمني عادي. اكتب /dive في @N3mak_bot",
   "موقعك يخبرني بأكثر مما تظن: التقنية، والقناة التي تفتقدها، وكم تكلفك. اكتب /blue في @N3mak_bot",
@@ -1170,15 +1170,28 @@ async function rescueTick() {
 
 async function broadcastTick() {
   try {
-    await store.seedPosts(SEED_POSTS);
     const chans = await store.listChannels();
     if (!chans.length) return;
-    const post = await store.nextPost();
-    if (!post) return;
-    for (const c of chans) {
-      await tg("sendMessage", { chat_id: c.chat_id, text: post.body }).catch(() => null);
+
+    // Live post: composed from the database, so every broadcast is new content
+    // instead of a recycled seed message.
+    const idx = await store.exposureIndex();
+    const sig = await store.recentSignals(6);
+    const hours = new Date().getUTCHours();
+    let text;
+    if (hours < 8 || hours >= 20) {
+      const top = sig.slice(0, 4).map((s) => "- " + s.title + (s.detail ? " (" + s.detail.split(" · ")[0].replace("group: ", "") + ")" : "")).join("\n");
+      text = `N3mak Radar — late shift\n\nNew published victims in the last hours:\n${top}\n\nFull board: https://namak7678.github.io/n3mak-radar/`;
+    } else {
+      const board = idx.slice(0, 6).map((x, i) => `${i + 1}. ${x.country} ${x.index}/100 (${x.victims})`).join("\n");
+      text = `N3mak Exposure Index — updated just now\n\n${board}\n\nCountry pages and free badge: https://namak7678.github.io/n3mak-radar/\nAudit your own site: /blue yourdomain.com`;
     }
-    console.log(`broadcast ${post.id} to ${chans.length} channels`);
+    let sent = 0;
+    for (const c of chans) {
+      const ok = await tg("sendMessage", { chat_id: c.chat_id, text }).catch(() => null);
+      if (ok) sent += 1;
+    }
+    console.log(`broadcast to ${sent}/${chans.length} channels`);
   } catch (e) { console.error("broadcast:", e.message); }
 }
 // N3mak Radar: the bot builds its own intelligence feed from public leak data.
@@ -1259,6 +1272,7 @@ setTimeout(publishRadarPage, 75 * 1000);
 setInterval(publishRadarPage, 6 * 60 * 60 * 1000);
 setInterval(radarTick, 6 * 60 * 60 * 1000);
 setInterval(broadcastTick, POST_EVERY_MS);
+setTimeout(broadcastTick, 6 * 60 * 1000);
 setTimeout(broadcastTick, 45 * 1000);
 
 // Self keep-alive: Render's free tier sleeps after 15 minutes without inbound traffic.
