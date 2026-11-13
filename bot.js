@@ -29,7 +29,9 @@ const API = `https://api.telegram.org/bot${TOKEN}`;
 const PRODUCT_FILE = "https://base44.app/api/apps/6ab5921b9ca1863c59719606/files/mp/public/6ab5921b9ca1863c59719606/a414de526_AI-Automation-Blueprints.pdf";
 const OR_KEY = process.env.OPENROUTER_API_KEY || "";
 const OR_URL = "https://openrouter.ai/api/v1/chat/completions";
-const OR_MODELS = ["liquid/lfm-2.5-2.6b:free", "openrouter/free", "nvidia/nemotron-3.5-lightning:free"];
+// Free tier only. Ordered by quality on Arabic + English business copy, then context size.
+const OR_MODELS = ["nvidia/nemotron-3-ultra-550b-a55b:free", "google/gemma-4-31b-it:free",
+  "cohere/north-mini-code:free", "nvidia/nemotron-3.5-lightning:free", "openrouter/free"];
 const PAY_ADDR = "0xE18e7F67Ad6429577af6c394eBE94717A87B3Fae";
 // PayPal is offered as a lighter option for clients who do not hold crypto.
 // There is no API to confirm a paypal.me transfer, so these orders stay manual.
